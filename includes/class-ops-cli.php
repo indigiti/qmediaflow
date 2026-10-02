@@ -3,8 +3,13 @@ namespace MediaFlow;
 
 /** Registers roadmap operational commands under the canonical qmediaflow CLI. */
 final class Ops_CLI {
+    private static bool $registered = false;
+
     public static function register(): void {
-        if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) { return; }
+        if ( self::$registered || ! defined( 'WP_CLI' ) || ! WP_CLI ) { return; }
+        // The legacy `wp mediaflow` command is registered by Plugin::boot().
+        // Register the canonical root before adding nested operational commands.
+        \WP_CLI::add_command( 'qmediaflow', CLI::class );
         \WP_CLI::add_command( 'qmediaflow metrics', array( self::class, 'metrics' ) );
         \WP_CLI::add_command( 'qmediaflow queue status', array( self::class, 'queue_status' ) );
         \WP_CLI::add_command( 'qmediaflow queue run', array( self::class, 'queue_run' ) );
@@ -15,6 +20,7 @@ final class Ops_CLI {
         \WP_CLI::add_command( 'qmediaflow thumbnails migrate', array( self::class, 'thumbnail_migrate' ) );
         \WP_CLI::add_command( 'qmediaflow thumbnails rollback', array( self::class, 'thumbnail_rollback' ) );
         \WP_CLI::add_command( 'qmediaflow thumbnails purge', array( self::class, 'thumbnail_purge' ) );
+        self::$registered = true;
     }
 
     public static function metrics( array $args = array(), array $assoc = array() ): void {
@@ -55,9 +61,7 @@ final class Ops_CLI {
 
     public static function thumbnail_migrate( array $args = array(), array $assoc = array() ): void {
         $dry_run = ! isset( $assoc['yes'] );
-        if ( $dry_run ) {
-            \WP_CLI::warning( 'Dry run only. Add --yes after reviewing the audit to quarantine eligible physical thumbnails.' );
-        }
+        if ( $dry_run ) { \WP_CLI::warning( 'Dry run only. Add --yes after reviewing the audit to quarantine eligible physical thumbnails.' ); }
         $result = Features::instance()->thumbnail_migrator()->migrate( absint( $assoc['limit'] ?? 25 ), absint( $assoc['after'] ?? 0 ), $dry_run );
         self::json( $result );
         if ( isset( $result['error'] ) ) { \WP_CLI::error( (string) $result['error'] ); }
