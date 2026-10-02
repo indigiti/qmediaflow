@@ -71,9 +71,14 @@ def main():
     assert '/lqip/' in paths and 'generation-locks/slot-' in paths
     assert '__mediaflow-lqip-pending.svg' in paths and 'no-store, max-age=0' in paths
     main=(ROOT/'mediaflow.php').read_text()
-    assert "MEDIAFLOW_ROUTING_SCHEMA_VERSION', '4'" in main and '$routing_version' in paths
-    assert "MEDIAFLOW_VERSION', '0.2.8'" in main
-    print('PASS: v0.2.8 adaptive placeholder and browser-upload contracts')
+    assert "QMEDIAFLOW_VERSION', '0.2.9'" in main
+    assert "MEDIAFLOW_VERSION', QMEDIAFLOW_VERSION" in main
+    assert "MEDIAFLOW_ROUTING_SCHEMA_VERSION', QMEDIAFLOW_ROUTING_SCHEMA_VERSION" in main and '$routing_version' in paths
+    assert 'qmediaflow_url' in main and 'qmediaflow_image' in main
+    assert "add_command( 'qmediaflow'" in main
+    branding=(ROOT/'includes/class-branding.php').read_text()
+    assert "'QMediaFlow'" in branding and "str_replace( 'MediaFlow', 'QMediaFlow'" in branding
+    print('PASS: v0.2.9 QMediaFlow compatibility and branding contracts')
     upload=(ROOT/'includes/class-upload-optimizer.php').read_text()
     upload_js=(ROOT/'assets/js/mediaflow-upload.js').read_text()
     upload_worker=(ROOT/'assets/js/mediaflow-upload-worker.js').read_text()

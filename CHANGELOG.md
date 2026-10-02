@@ -1,3 +1,13 @@
+## 0.2.9 — QMediaFlow identity + compatibility layer
+
+- Renamed the public product/plugin identity from MediaFlow to **QMediaFlow**.
+- Added canonical `QMEDIAFLOW_*` configuration constants while preserving `MEDIAFLOW_*` aliases for existing installations.
+- Added canonical `qmediaflow_url()` and `qmediaflow_image()` helpers while preserving legacy helper aliases.
+- Added the canonical `wp qmediaflow ...` WP-CLI command while retaining `wp mediaflow ...` compatibility.
+- Kept historical namespaces, hook/action names, runtime paths and cache identities where renaming would create unnecessary upgrade/cache migration risk.
+- Reworked README/readme metadata around the QMediaFlow identity and documented the compatibility boundary.
+- Added `docs/QMEDIAFLOW-PERFORMANCE-ROADMAP.md`, prioritizing a direct cold-miss gateway, critical publish-time warming, a de-duplicated derivative queue, immutable cache/CDN policy, object storage, bounded dual-format delivery and production observability.
+
 ## 0.2.8 — Browser Upload Pipeline
 
 - Added browser-first source optimization for Media Library/editor uploads: type/source-size validation, orientation normalization, dimension constraints, Web Worker WebP encoding and final WordPress upload.
@@ -49,7 +59,7 @@ Per-site controls (default off), scoped native encoder policy, output-header ver
 
 # 0.2.3 — Apache + Multisite Routing Hotfix
 
-Fixes Apache HTTP 500 responses caused by MediaFlow v0.2.2 public cache guard files on hosts that do not permit the `Options` directive in `.htaccess`. Adds an explicit cache-root cold-miss rewrite for single-site and multisite, preserves direct static delivery for warm hits, and automatically migrates known v0.2.2 guard files without overwriting unrelated administrator rules. Also removes the legacy `Options -Indexes` directive from MediaFlow private guards while retaining deny rules. See `docs/RELEASE-0.2.3.md`.
+Fixes Apache HTTP 500 responses caused by MediaFlow v0.2.2 public cache guard files on hosts that do not permit the `Options` directive in `.htaccess`. Adds an explicit cache-root cold-miss rewrite for single-site and multisite, preserves direct static delivery for warm hits, and automatically migrates known v0.2.2 guard files without overwriting unrelated administrator rules. Also removes the legacy Options directive from private MediaFlow guards while retaining deny rules. See `docs/RELEASE-0.2.3.md`.
 
 # 0.2.2 — Multisite
 
