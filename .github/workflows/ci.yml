@@ -6,6 +6,7 @@ on:
       - main
       - 'chore/**'
       - 'feature/**'
+      - 'feat/**'
       - 'fix/**'
   pull_request:
 
