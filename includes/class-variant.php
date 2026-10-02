@@ -10,8 +10,10 @@ final class Variant {
     public string $extension;
     public string $mime;
     public string $signature;
+    public int $focal_x;
+    public int $focal_y;
 
-    public function __construct( int $width, int $height, bool $crop, int $quality, string $format, string $signature = '' ) {
+    public function __construct( int $width, int $height, bool $crop, int $quality, string $format, string $signature = '', int $focal_x = 50, int $focal_y = 50 ) {
         $this->width     = max( 1, $width );
         $this->height    = max( 0, $height );
         $this->crop      = $crop;
@@ -20,6 +22,8 @@ final class Variant {
         $this->extension = self::extension_for_format( $format );
         $this->mime      = self::mime_for_format( $format );
         $this->signature = $signature;
+        $this->focal_x   = max( 0, min( 100, $focal_x ) );
+        $this->focal_y   = max( 0, min( 100, $focal_y ) );
     }
 
     public function with_signature( string $signature ): self {
@@ -28,13 +32,19 @@ final class Variant {
         return $copy;
     }
 
+    public function has_focal_point(): bool {
+        return $this->crop && ( 50 !== $this->focal_x || 50 !== $this->focal_y );
+    }
+
     public function token(): string {
+        $focal = $this->has_focal_point() ? sprintf( '-fx%d-fy%d', $this->focal_x, $this->focal_y ) : '';
         return sprintf(
-            'w%d-h%d-c%d-q%d-s%s',
+            'w%d-h%d-c%d-q%d%s-s%s',
             $this->width,
             $this->height,
             $this->crop ? 1 : 0,
             $this->quality,
+            $focal,
             $this->signature
         );
     }
