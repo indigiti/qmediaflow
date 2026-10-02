@@ -82,6 +82,7 @@ require_once QMEDIAFLOW_DIR . 'includes/class-responsive.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-admin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
@@ -89,6 +90,7 @@ add_action(
     'plugins_loaded',
     static function (): void {
         MediaFlow\Plugin::instance()->boot();
+        MediaFlow\Branding::register();
     },
     1
 );
@@ -110,7 +112,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
  * @return string|false
  */
 if ( ! function_exists( 'qmediaflow_url' ) ) {
-    function qmediaflow_url( int $attachment_id, array $args = array() ) {
+    function qmediaflow_url( int $attachment_id, array $args = array() ) ) {
         if ( ! MediaFlow\Plugin::network_enabled() ) {
             return false;
         }
