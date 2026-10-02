@@ -1,11 +1,11 @@
 <?php
 /**
- * Plugin Name: MediaFlow
- * Description: On-demand WordPress image resizing with a disposable static cache and no database work on cached image delivery.
- * Version:     0.2.8
- * Author:      MediaFlow
+ * Plugin Name: QMediaFlow
+ * Description: Browser-first WordPress image optimization with adaptive, on-demand responsive delivery and a disposable static cache.
+ * Version:     0.2.9
+ * Author:      QMediaFlow
  * License:     GPL-2.0-or-later
- * Text Domain: mediaflow
+ * Text Domain: qmediaflow
  * Requires at least: 6.5
  * Requires PHP: 8.1
  */
@@ -14,33 +14,74 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MEDIAFLOW_VERSION', '0.2.8' );
-define( 'MEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
-define( 'MEDIAFLOW_FILE', __FILE__ );
-define( 'MEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
-define( 'MEDIAFLOW_URL', plugin_dir_url( __FILE__ ) );
-if ( ! defined( 'MEDIAFLOW_MAX_OUTPUT_PIXELS' ) ) {
-    define( 'MEDIAFLOW_MAX_OUTPUT_PIXELS', 8000000 );
+/*
+ * QMediaFlow is the canonical product name from v0.2.9 onward.
+ * The MediaFlow namespace, hooks, actions, storage paths and constants remain
+ * supported as compatibility identifiers so existing sites do not break.
+ */
+define( 'QMEDIAFLOW_VERSION', '0.2.9' );
+define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
+define( 'QMEDIAFLOW_FILE', __FILE__ );
+define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
+define( 'QMEDIAFLOW_URL', plugin_dir_url( __FILE__ ) );
+
+if ( ! defined( 'MEDIAFLOW_VERSION' ) ) {
+    define( 'MEDIAFLOW_VERSION', QMEDIAFLOW_VERSION );
 }
-if ( ! defined( 'MEDIAFLOW_MAX_SOURCE_PIXELS' ) ) {
-    define( 'MEDIAFLOW_MAX_SOURCE_PIXELS', 24000000 );
+if ( ! defined( 'MEDIAFLOW_ROUTING_SCHEMA_VERSION' ) ) {
+    define( 'MEDIAFLOW_ROUTING_SCHEMA_VERSION', QMEDIAFLOW_ROUTING_SCHEMA_VERSION );
+}
+if ( ! defined( 'MEDIAFLOW_FILE' ) ) {
+    define( 'MEDIAFLOW_FILE', QMEDIAFLOW_FILE );
+}
+if ( ! defined( 'MEDIAFLOW_DIR' ) ) {
+    define( 'MEDIAFLOW_DIR', QMEDIAFLOW_DIR );
+}
+if ( ! defined( 'MEDIAFLOW_URL' ) ) {
+    define( 'MEDIAFLOW_URL', QMEDIAFLOW_URL );
 }
 
-if ( ! defined( 'MEDIAFLOW_MAX_GENERATORS' ) ) { define( 'MEDIAFLOW_MAX_GENERATORS', 2 ); }
-require_once MEDIAFLOW_DIR . 'includes/class-budget.php';
-require_once MEDIAFLOW_DIR . 'includes/class-encoding.php';
-require_once MEDIAFLOW_DIR . 'includes/class-paths.php';
-require_once MEDIAFLOW_DIR . 'includes/class-settings.php';
-require_once MEDIAFLOW_DIR . 'includes/class-upload-optimizer.php';
-require_once MEDIAFLOW_DIR . 'includes/class-manifest-store.php';
-require_once MEDIAFLOW_DIR . 'includes/class-variant.php';
-require_once MEDIAFLOW_DIR . 'includes/class-resolver.php';
-require_once MEDIAFLOW_DIR . 'includes/class-processor.php';
-require_once MEDIAFLOW_DIR . 'includes/class-request-handler.php';
-require_once MEDIAFLOW_DIR . 'includes/class-responsive.php';
-require_once MEDIAFLOW_DIR . 'includes/class-admin.php';
-require_once MEDIAFLOW_DIR . 'includes/class-cli.php';
-require_once MEDIAFLOW_DIR . 'includes/class-plugin.php';
+if ( defined( 'QMEDIAFLOW_PRIVATE_DIR' ) && ! defined( 'MEDIAFLOW_PRIVATE_DIR' ) ) {
+    define( 'MEDIAFLOW_PRIVATE_DIR', QMEDIAFLOW_PRIVATE_DIR );
+} elseif ( defined( 'MEDIAFLOW_PRIVATE_DIR' ) && ! defined( 'QMEDIAFLOW_PRIVATE_DIR' ) ) {
+    define( 'QMEDIAFLOW_PRIVATE_DIR', MEDIAFLOW_PRIVATE_DIR );
+}
+
+if ( ! defined( 'QMEDIAFLOW_MAX_OUTPUT_PIXELS' ) ) {
+    define( 'QMEDIAFLOW_MAX_OUTPUT_PIXELS', defined( 'MEDIAFLOW_MAX_OUTPUT_PIXELS' ) ? MEDIAFLOW_MAX_OUTPUT_PIXELS : 8000000 );
+}
+if ( ! defined( 'MEDIAFLOW_MAX_OUTPUT_PIXELS' ) ) {
+    define( 'MEDIAFLOW_MAX_OUTPUT_PIXELS', QMEDIAFLOW_MAX_OUTPUT_PIXELS );
+}
+
+if ( ! defined( 'QMEDIAFLOW_MAX_SOURCE_PIXELS' ) ) {
+    define( 'QMEDIAFLOW_MAX_SOURCE_PIXELS', defined( 'MEDIAFLOW_MAX_SOURCE_PIXELS' ) ? MEDIAFLOW_MAX_SOURCE_PIXELS : 24000000 );
+}
+if ( ! defined( 'MEDIAFLOW_MAX_SOURCE_PIXELS' ) ) {
+    define( 'MEDIAFLOW_MAX_SOURCE_PIXELS', QMEDIAFLOW_MAX_SOURCE_PIXELS );
+}
+
+if ( ! defined( 'QMEDIAFLOW_MAX_GENERATORS' ) ) {
+    define( 'QMEDIAFLOW_MAX_GENERATORS', defined( 'MEDIAFLOW_MAX_GENERATORS' ) ? MEDIAFLOW_MAX_GENERATORS : 2 );
+}
+if ( ! defined( 'MEDIAFLOW_MAX_GENERATORS' ) ) {
+    define( 'MEDIAFLOW_MAX_GENERATORS', QMEDIAFLOW_MAX_GENERATORS );
+}
+
+require_once QMEDIAFLOW_DIR . 'includes/class-budget.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-encoding.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-paths.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-settings.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-upload-optimizer.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-manifest-store.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-variant.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-resolver.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-processor.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-request-handler.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-responsive.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-admin.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
@@ -53,19 +94,23 @@ add_action(
 );
 
 /**
- * Public helper: return a MediaFlow variant URL.
+ * Canonical public helper: return a QMediaFlow variant URL.
  *
  * @param int   $attachment_id WordPress attachment ID.
  * @param array $args          width, height, crop, quality, format.
  * @return string|false
  */
-function mediaflow_url( int $attachment_id, array $args = array() ) {
-    if ( ! MediaFlow\Plugin::network_enabled() ) { return false; }
-    return MediaFlow\Plugin::instance()->resolver()->custom_url( $attachment_id, $args );
+if ( ! function_exists( 'qmediaflow_url' ) ) {
+    function qmediaflow_url( int $attachment_id, array $args = array() ) {
+        if ( ! MediaFlow\Plugin::network_enabled() ) {
+            return false;
+        }
+        return MediaFlow\Plugin::instance()->resolver()->custom_url( $attachment_id, $args );
+    }
 }
 
 /**
- * Public helper: render a responsive MediaFlow image using WordPress markup.
+ * Canonical public helper: render a responsive QMediaFlow image using WordPress markup.
  * WordPress remains responsible for loading/fetchpriority decisions.
  *
  * @param int          $attachment_id WordPress attachment ID.
@@ -73,6 +118,22 @@ function mediaflow_url( int $attachment_id, array $args = array() ) {
  * @param array        $attr          Extra HTML attributes.
  * @return string
  */
-function mediaflow_image( int $attachment_id, $size = 'large', array $attr = array() ): string {
-    return (string) wp_get_attachment_image( $attachment_id, $size, false, $attr );
+if ( ! function_exists( 'qmediaflow_image' ) ) {
+    function qmediaflow_image( int $attachment_id, $size = 'large', array $attr = array() ): string {
+        return (string) wp_get_attachment_image( $attachment_id, $size, false, $attr );
+    }
+}
+
+/** Legacy API alias retained for backward compatibility. */
+if ( ! function_exists( 'mediaflow_url' ) ) {
+    function mediaflow_url( int $attachment_id, array $args = array() ) {
+        return qmediaflow_url( $attachment_id, $args );
+    }
+}
+
+/** Legacy API alias retained for backward compatibility. */
+if ( ! function_exists( 'mediaflow_image' ) ) {
+    function mediaflow_image( int $attachment_id, $size = 'large', array $attr = array() ): string {
+        return qmediaflow_image( $attachment_id, $size, $attr );
+    }
 }
