@@ -25,8 +25,6 @@ if ( ! defined( 'MEDIAFLOW_FILE' ) ) { define( 'MEDIAFLOW_FILE', QMEDIAFLOW_FILE
 if ( ! defined( 'MEDIAFLOW_DIR' ) ) { define( 'MEDIAFLOW_DIR', QMEDIAFLOW_DIR ); }
 if ( ! defined( 'MEDIAFLOW_URL' ) ) { define( 'MEDIAFLOW_URL', QMEDIAFLOW_URL ); }
 
-// Existing Paths supports an overridable cold front-controller path. Route new
-// cold misses directly to the standalone gateway without changing signed URLs.
 $gateway_path = (string) parse_url( QMEDIAFLOW_URL . 'qmediaflow-gateway.php', PHP_URL_PATH );
 if ( '' === $gateway_path ) { $gateway_path = '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php'; }
 if ( ! defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ) { define( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH', $gateway_path ); }
@@ -84,13 +82,6 @@ add_action( 'plugins_loaded', static function (): void {
     if ( MediaFlow\Plugin::network_enabled() ) { MediaFlow\Features::boot(); }
 }, 1 );
 
-if ( defined( 'WP_CLI' ) && WP_CLI ) {
-    add_action( 'cli_init', static function (): void {
-        \WP_CLI::add_command( 'qmediaflow', MediaFlow\CLI::class );
-        MediaFlow\Ops_CLI::register();
-    } );
-}
-
 /** Canonical public helper: return a QMediaFlow variant URL. */
 if ( ! function_exists( 'qmediaflow_url' ) ) {
     function qmediaflow_url( int $attachment_id, array $args = array() ) {
@@ -116,9 +107,7 @@ if ( ! function_exists( 'qmediaflow_image' ) ) {
 /** Canonical optional dual-format picture helper. */
 if ( ! function_exists( 'qmediaflow_picture' ) ) {
     function qmediaflow_picture( int $attachment_id, $size = 'large', array $attr = array() ): string {
-        if ( ! MediaFlow\Plugin::network_enabled() || ! MediaFlow\Runtime_Config::dual_format_enabled() ) {
-            return qmediaflow_image( $attachment_id, $size, $attr );
-        }
+        if ( ! MediaFlow\Plugin::network_enabled() || ! MediaFlow\Runtime_Config::dual_format_enabled() ) { return qmediaflow_image( $attachment_id, $size, $attr ); }
         return MediaFlow\Features::instance()->picture()->render( $attachment_id, $size, $attr );
     }
 }
