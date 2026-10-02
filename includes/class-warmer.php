@@ -6,9 +6,7 @@ final class Warmer {
     private Derivative_Queue $queue;
     private static array $warmed_posts = array();
 
-    public function __construct( Derivative_Queue $queue ) {
-        $this->queue = $queue;
-    }
+    public function __construct( Derivative_Queue $queue ) { $this->queue = $queue; }
 
     public function hooks(): void {
         add_action( 'transition_post_status', array( $this, 'on_transition' ), 20, 3 );
@@ -16,23 +14,18 @@ final class Warmer {
     }
 
     public function on_transition( string $new_status, string $old_status, \WP_Post $post ): void {
-        if ( 'publish' === $new_status && 'publish' !== $old_status ) {
-            $this->warm_post( (int) $post->ID );
-        }
+        if ( 'publish' === $new_status && 'publish' !== $old_status ) { $this->warm_post( (int) $post->ID ); }
     }
 
     public function on_save( int $post_id, \WP_Post $post, bool $update ): void {
-        if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) || 'publish' !== $post->post_status ) {
-            return;
-        }
+        if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) || 'publish' !== $post->post_status ) { return; }
         $this->warm_post( $post_id );
     }
 
     public function warm_post( int $post_id ): int {
-        if ( ! Runtime_Config::warm_enabled() || $post_id < 1 || isset( self::$warmed_posts[ $post_id ] ) ) {
-            return 0;
-        }
-        self::$warmed_posts[ $post_id ] = true;
+        $key = ( function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0 ) . ':' . $post_id;
+        if ( ! Runtime_Config::warm_enabled() || $post_id < 1 || isset( self::$warmed_posts[ $key ] ) ) { return 0; }
+        self::$warmed_posts[ $key ] = true;
         $post = get_post( $post_id );
         if ( ! $post || 'publish' !== $post->post_status ) { return 0; }
 
@@ -40,8 +33,8 @@ final class Warmer {
         if ( $max < 1 ) { return 0; }
         $widths = Runtime_Config::warm_widths();
         $jobs = 0;
-
         $featured = absint( get_post_thumbnail_id( $post_id ) );
+
         if ( $featured ) {
             foreach ( $this->critical_widths( $widths, 2 ) as $width ) {
                 if ( $jobs >= $max ) { break; }
