@@ -112,7 +112,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
  * @return string|false
  */
 if ( ! function_exists( 'qmediaflow_url' ) ) {
-    function qmediaflow_url( int $attachment_id, array $args = array() ) ) {
+    function qmediaflow_url( int $attachment_id, array $args = array() ) {
         if ( ! MediaFlow\Plugin::network_enabled() ) {
             return false;
         }
