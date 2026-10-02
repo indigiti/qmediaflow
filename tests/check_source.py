@@ -105,7 +105,7 @@ def main():
     print('PASS: deterministic content-aware encoding, telemetry and health diagnostics contracts')
 
     focal=(ROOT/'includes/class-focal-point.php').read_text();focal_resolver=(ROOT/'includes/class-focal-resolver.php').read_text();rest=(ROOT/'includes/class-rest-api.php').read_text();woo=(ROOT/'includes/class-woocommerce-adapter.php').read_text();migration=(ROOT/'includes/class-thumbnail-migrator.php').read_text();ops=(ROOT/'includes/class-ops-cli.php').read_text()
-    assert '_qmediaflow_focal_x' in focal and "'fx%d-fy%d'" in (ROOT/'includes/class-variant.php').read_text()
+    assert '_qmediaflow_focal_x' in focal and "'-fx%d-fy%d'" in (ROOT/'includes/class-variant.php').read_text()
     assert '$variant->focal_x' in focal_resolver and 'qmediaflow/v1' in rest and "permission_callback' => '__return_true'" in rest
     assert 'woocommerce_gallery_thumbnail' in woo and '_product_image_gallery' in warmer
     assert 'thumbnail-migration/quarantine' in migration and 'rollback(' in migration and 'Dry run only' in ops
