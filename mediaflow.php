@@ -93,6 +93,15 @@ add_action(
     1
 );
 
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+    add_action(
+        'cli_init',
+        static function (): void {
+            \WP_CLI::add_command( 'qmediaflow', MediaFlow\CLI::class );
+        }
+    );
+}
+
 /**
  * Canonical public helper: return a QMediaFlow variant URL.
  *
