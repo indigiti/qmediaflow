@@ -2,7 +2,7 @@
 /**
  * Plugin Name: QMediaFlow
  * Description: Browser-first WordPress image optimization with adaptive, on-demand responsive delivery and a disposable static cache.
- * Version:     0.2.9
+ * Version:     0.3.0
  * Author:      QMediaFlow
  * License:     GPL-2.0-or-later
  * Text Domain: qmediaflow
@@ -19,8 +19,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * The MediaFlow namespace, hooks, actions, storage paths and constants remain
  * supported as compatibility identifiers so existing sites do not break.
  */
-define( 'QMEDIAFLOW_VERSION', '0.2.9' );
-define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
+define( 'QMEDIAFLOW_VERSION', '0.3.0' );
+define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '5' );
 define( 'QMEDIAFLOW_FILE', __FILE__ );
 define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
 define( 'QMEDIAFLOW_URL', plugin_dir_url( __FILE__ ) );
@@ -39,6 +39,18 @@ if ( ! defined( 'MEDIAFLOW_DIR' ) ) {
 }
 if ( ! defined( 'MEDIAFLOW_URL' ) ) {
     define( 'MEDIAFLOW_URL', QMEDIAFLOW_URL );
+}
+
+// Paths already supports an overridable cold front controller. Point new installs
+// at the standalone gateway while retaining MEDIAFLOW_FRONT_CONTROLLER_PATH as a
+// deployment override for hosts that need a custom route.
+$gateway_path = (string) parse_url( QMEDIAFLOW_URL . 'qmediaflow-gateway.php', PHP_URL_PATH );
+if ( '' === $gateway_path ) { $gateway_path = '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php'; }
+if ( ! defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ) {
+    define( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH', $gateway_path );
+}
+if ( ! defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ) {
+    define( 'MEDIAFLOW_FRONT_CONTROLLER_PATH', QMEDIAFLOW_FRONT_CONTROLLER_PATH );
 }
 
 if ( defined( 'QMEDIAFLOW_PRIVATE_DIR' ) && ! defined( 'MEDIAFLOW_PRIVATE_DIR' ) ) {
@@ -68,6 +80,7 @@ if ( ! defined( 'MEDIAFLOW_MAX_GENERATORS' ) ) {
     define( 'MEDIAFLOW_MAX_GENERATORS', QMEDIAFLOW_MAX_GENERATORS );
 }
 
+require_once QMEDIAFLOW_DIR . 'includes/class-runtime-config.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-budget.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-encoding.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-paths.php';
@@ -79,10 +92,14 @@ require_once QMEDIAFLOW_DIR . 'includes/class-resolver.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-processor.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-request-handler.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-responsive.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-telemetry.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-derivative-queue.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-warmer.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-admin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-features.php';
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
@@ -91,6 +108,9 @@ add_action(
     static function (): void {
         MediaFlow\Plugin::instance()->boot();
         MediaFlow\Branding::register();
+        if ( MediaFlow\Plugin::network_enabled() ) {
+            MediaFlow\Features::boot();
+        }
     },
     1
 );
