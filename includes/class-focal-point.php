@@ -12,12 +12,13 @@ final class Focal_Point {
 
     /** @return array{0:int,1:int} */
     public static function get( int $attachment_id ): array {
-        if ( isset( self::$cache[ $attachment_id ] ) ) { return self::$cache[ $attachment_id ]; }
+        $key = self::cache_key( $attachment_id );
+        if ( isset( self::$cache[ $key ] ) ) { return self::$cache[ $key ]; }
         $x = get_post_meta( $attachment_id, '_qmediaflow_focal_x', true );
         $y = get_post_meta( $attachment_id, '_qmediaflow_focal_y', true );
         $x = '' === $x ? 50 : max( 0, min( 100, (int) $x ) );
         $y = '' === $y ? 50 : max( 0, min( 100, (int) $y ) );
-        return self::$cache[ $attachment_id ] = array( $x, $y );
+        return self::$cache[ $key ] = array( $x, $y );
     }
 
     public function fields( array $fields, \WP_Post $attachment ): array {
@@ -46,11 +47,16 @@ final class Focal_Point {
         $y = isset( $attachment['qmediaflow_focal_y'] ) ? max( 0, min( 100, absint( $attachment['qmediaflow_focal_y'] ) ) ) : $old[1];
         update_post_meta( $id, '_qmediaflow_focal_x', $x );
         update_post_meta( $id, '_qmediaflow_focal_y', $y );
-        self::$cache[ $id ] = array( $x, $y );
+        self::$cache[ self::cache_key( $id ) ] = array( $x, $y );
         if ( $old[0] !== $x || $old[1] !== $y ) {
             Telemetry::event( 'focal_point_changed' );
             do_action( 'qmediaflow_focal_changed', $id, $x, $y, $old );
         }
         return $post;
+    }
+
+    private static function cache_key( int $attachment_id ): string {
+        $site_id = function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 0;
+        return $site_id . ':' . $attachment_id;
     }
 }
