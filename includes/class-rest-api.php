@@ -45,19 +45,56 @@ final class REST_API {
         if ( ! in_array( $format, array( 'auto', 'original' ), true ) ) { $args['format'] = $format; }
         elseif ( 'original' === $format ) { $args['format'] = Variant::format_from_mime( (string) $manifest['mime'] ); }
 
-        $variant = $this->resolver->variant_for( $id, $manifest, array_merge( $args, array( 'quality' => Plugin::instance()->settings()->quality() ) ) );
+        $settings = Plugin::instance()->settings();
+        $base_variant = $this->resolver->variant_for( $id, $manifest, array_merge( $args, array( 'quality' => $settings->quality() ) ) );
+        if ( ! $base_variant ) { return new \WP_Error( 'qmediaflow_transform', 'Requested transform is unavailable.', array( 'status' => 400 ) ); }
+
+        [ $focal_x, $focal_y ] = Focal_Point::get( $id );
+        $main_spec = array(
+            'width'   => $base_variant->width,
+            'height'  => $base_variant->height,
+            'crop'    => $base_variant->crop,
+            'format'  => $base_variant->format,
+            'quality' => Encoding_Policy::quality( $manifest, $base_variant->width, $base_variant->format, $settings->quality() ),
+        );
+        $variant = $crop && ( 50 !== $focal_x || 50 !== $focal_y )
+            ? Focal_Resolver::variant( $id, $manifest, $main_spec, $focal_x, $focal_y )
+            : $this->resolver->variant_for( $id, $manifest, $main_spec );
         if ( ! $variant ) { return new \WP_Error( 'qmediaflow_transform', 'Requested transform is unavailable.', array( 'status' => 400 ) ); }
+
         [ $out_w, $out_h ] = $this->resolver->output_dimensions( $manifest, $variant );
         $aspect = $crop && $out_h > 0 ? $out_w / $out_h : null;
-        $responsive = $this->resolver->responsive_sources( $id, $out_w, $aspect, $crop );
-        $responsive[ $out_w ] = $this->resolver->url( $id, $manifest, $variant );
-        ksort( $responsive, SORT_NUMERIC );
-        $candidates = array();
-        foreach ( $responsive as $candidate_width => $url ) {
-            $candidates[] = array( 'width' => (int) $candidate_width, 'url' => $this->distribution->public_url( (string) $url ) );
-        }
+        $base_sources = $this->resolver->responsive_sources( $id, $out_w, $aspect, $crop );
+        $widths = array_keys( $base_sources );
+        $widths[] = $out_w;
+        $widths = array_values( array_unique( array_map( 'absint', $widths ) ) );
+        sort( $widths, SORT_NUMERIC );
 
-        [ $focal_x, $focal_y ] = class_exists( Focal_Point::class ) ? Focal_Point::get( $id ) : array( 50, 50 );
+        $candidates = array();
+        foreach ( $widths as $candidate_width ) {
+            $candidate_height = $crop && $aspect ? max( 1, (int) round( $candidate_width / $aspect ) ) : 0;
+            $spec = array(
+                'width'   => $candidate_width,
+                'height'  => $candidate_height,
+                'crop'    => $crop,
+                'format'  => $variant->format,
+                'quality' => Encoding_Policy::quality( $manifest, $candidate_width, $variant->format, $settings->quality() ),
+            );
+            $candidate = $crop && ( 50 !== $focal_x || 50 !== $focal_y )
+                ? Focal_Resolver::variant( $id, $manifest, $spec, $focal_x, $focal_y )
+                : $this->resolver->variant_for( $id, $manifest, $spec );
+            if ( ! $candidate ) { continue; }
+            [ $actual_width ] = $this->resolver->output_dimensions( $manifest, $candidate );
+            $candidates[ $actual_width ] = array(
+                'width' => $actual_width,
+                'url'   => $this->distribution->public_url( $this->resolver->url( $id, $manifest, $candidate ) ),
+            );
+        }
+        ksort( $candidates, SORT_NUMERIC );
+        $candidates = array_values( $candidates );
+
+        $lqip_url = 'auto' === (string) ( $manifest['placeholder_type'] ?? '' ) ? $this->manifests->lqip_url( $id, $manifest ) : '';
+        if ( $lqip_url ) { $lqip_url = $this->distribution->public_url( $lqip_url ); }
         $data = array(
             'id'            => $id,
             'revision'      => (string) $manifest['revision'],
@@ -73,7 +110,7 @@ final class REST_API {
             'placeholder'   => array(
                 'mode'  => (string) ( $manifest['placeholder_type'] ?? 'none' ),
                 'state' => (string) ( $manifest['lqip_state'] ?? 'disabled' ),
-                'url'   => 'auto' === (string) ( $manifest['placeholder_type'] ?? '' ) ? $this->manifests->lqip_url( $id, $manifest ) : '',
+                'url'   => $lqip_url,
                 'color' => 'color' === (string) ( $manifest['placeholder_type'] ?? '' ) ? (string) ( $manifest['placeholder'] ?? '' ) : '',
             ),
         );
