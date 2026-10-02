@@ -5,12 +5,14 @@ final class Budget {
     public static function acquire( Paths $paths ) {
         $dir = $paths->processing_lock_dir();
         if ( ! wp_mkdir_p( $dir ) ) { return new \WP_Error( 'mediaflow_budget_storage', 'Processing lock storage is unavailable.' ); }
-        for ( $i = 0; $i < max( 1, min( 16, (int) MEDIAFLOW_MAX_GENERATORS ) ); ++$i ) {
+        $limit = class_exists( Runtime_Config::class ) ? Runtime_Config::generator_limit() : max( 1, min( 16, (int) MEDIAFLOW_MAX_GENERATORS ) );
+        for ( $i = 0; $i < $limit; ++$i ) {
             $lock = @fopen( $dir . '/slot-' . $i, 'c' );
             if ( ! is_resource( $lock ) ) { continue; }
             if ( @flock( $lock, LOCK_EX | LOCK_NB ) ) { return $lock; }
             @fclose( $lock );
         }
+        if ( class_exists( Telemetry::class ) ) { Telemetry::event( 'generator_capacity_busy' ); }
         return new \WP_Error( 'mediaflow_capacity', 'Image processing capacity is busy.' );
     }
 
