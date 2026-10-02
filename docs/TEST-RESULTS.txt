@@ -1,0 +1,69 @@
+MediaFlow 0.2.8 local validation
+=================================
+
+BASELINE PRESERVED — 0.2.7
+- Adaptive Placeholder Engine and static cache architecture retained.
+- Existing routing, multisite context, LQIP generation, encoding and lock-contention regressions rerun after the upload-pipeline changes.
+
+POST-BUILD AUDIT — 0.2.8
+PASS: PHP lint across plugin/test PHP files
+PASS: JavaScript syntax check: assets/js/mediaflow-upload.js
+PASS: JavaScript syntax check: assets/js/mediaflow-upload-worker.js
+PASS: mocked browser transport test: fetch upload intercepted, WebP replacement inserted, marker header set, multipart fields preserved
+PASS: upload source contracts include browser type/source-size validation
+PASS: browser orientation normalization uses createImageBitmap(... imageOrientation: from-image)
+PASS: heavy WebP work is isolated in a Web Worker / OffscreenCanvas path
+PASS: WebP quality search targets 480,000 bytes
+PASS: dimension fallback reduces width/height by 10% and retries
+PASS: final client hard validation is <= 500,000 bytes
+PASS: classic image upload server guard requires real WebP MIME
+PASS: classic image upload server guard rejects > 500,000 bytes
+PASS: REST/sideload validation is scoped to MediaFlow-marked browser requests
+PASS: non-image attachment upload remains outside MediaFlow validation
+PASS: unmarked server-side sideload/import remains compatible
+PASS: WordPress 7.1+ core client-side media path is disabled while MediaFlow owns the source transform
+PASS: exact 500,000-byte WebP accepted by standalone server-contract test
+PASS: 500,001-byte WebP rejected by standalone server-contract test
+PASS: non-WebP final image rejected by standalone server-contract test
+PASS: signature validation still precedes normal derivative manifest recovery
+PASS: Apache/LiteSpeed routing schema 4 contains no Options directive
+PASS: missing Auto-LQIP route uses transparent static no-store fallback
+PASS: revisioned Auto-LQIP URL/encoder-extension regressions
+PASS: filesystem queue anti-stampede regression
+PASS: bounded LQIP generation lock pool regression
+PASS: single-decode adaptive LQIP fallback regression
+PASS: request-global inline LQIP count/byte budget regression
+PASS: nested multisite context switch/restore regression
+PASS: failed multisite reload preserves old service graph and can retry
+PASS: routing guard migration remains versioned/idempotent
+PASS: 24-process encoder admission: peak <= 2; busy workers fail fast; slots reusable
+PASS: progressive JPEG fixture
+PASS: baseline JPEG fixture
+PASS: Adam7 PNG fixture
+PASS: plain PNG fixture
+PASS: invalid JPEG rejected
+
+UPLOAD PERFORMANCE CONTRACT AFTER BUILD
+- selected image is decoded/oriented in the browser
+- source is never upscaled; configured max dimensions default to 2560 × 2560
+- encoding runs in a Web Worker where supported by the required browser path
+- highest WebP quality under 480 KB is selected by bounded binary search
+- if minimum quality misses 480 KB, dimensions fall by 10% and the search repeats
+- browser refuses a final result above 500 KB
+- PHP validates final MIME + size only; it does not recompress the MediaFlow browser source
+- normal WordPress attachment handling continues after validation
+- existing MediaFlow derivative/static-cache delivery plane remains separate
+
+NOT RUN / REQUIRES TARGET STAGING
+- actual WordPress Media Library grid/list upload UI
+- media modal upload from post/editor screens
+- WordPress 7.1 Block Editor upload transport on the target install
+- multi-file cancellation/retry and network interruption behavior
+- real browser Web Worker/OffscreenCanvas execution (headless Chromium in this sandbox did not complete reliably)
+- HEIC/HEIF decode availability across target browsers/OS codecs
+- real GD/Imagick generation for downstream MediaFlow derivatives/LQIP
+- effective Cloudways/Nginx/LiteSpeed/CDN routing and limits
+- WooCommerce/page-builder/theme integration
+- sustained production-like traffic and large-library behavior
+
+This is a code/synthetic post-audit, not production certification.

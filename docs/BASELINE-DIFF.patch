@@ -1,0 +1,1200 @@
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/CHANGELOG.md mediaflow_work/mediaflow/CHANGELOG.md
+--- mediaflow_baseline_027/mediaflow/CHANGELOG.md	2026-09-14 03:20:18.000000000 +0000
++++ mediaflow_work/mediaflow/CHANGELOG.md	2026-10-02 20:16:09.994499194 +0000
+@@ -1,3 +1,13 @@
++## 0.2.8 — Browser Upload Pipeline
++
++- Added browser-first source optimization for Media Library/editor uploads: type/source-size validation, orientation normalization, dimension constraints, Web Worker WebP encoding and final WordPress upload.
++- Added highest-quality binary search against a 480 KB working target, with 10% dimension step-down when the minimum quality still misses the target.
++- Added a hard 500 KB final WebP ceiling. MediaFlow's PHP upload path validates MIME + bytes only and does not recompress the browser-produced source.
++- Added configurable maximum upload dimensions (2560×2560 default) and original browser-processing size (25 MB default).
++- Disabled WordPress 7.1+ core client-side media processing while MediaFlow upload optimization is enabled to avoid double processing.
++- Preserved non-image attachments and unmarked server-side sideload/import flows.
++- Added standalone upload-contract tests and JS/PHP source assertions.
++
+ ## 0.2.7 — Adaptive Placeholder Engine
+ 
+ - Added Auto LQIP: existing images show a deterministic gradient immediately, queue one background job, and use a static LQIP on later visits.
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/README.md mediaflow_work/mediaflow/README.md
+--- mediaflow_baseline_027/mediaflow/README.md	2026-09-14 03:23:02.000000000 +0000
++++ mediaflow_work/mediaflow/README.md	2026-10-02 20:16:09.994637052 +0000
+@@ -1,10 +1,12 @@
++> **0.2.8 Browser Upload Pipeline:** Selected images can now be normalized and compressed to WebP in the browser before upload. MediaFlow targets 480 KB, reduces dimensions when needed, hard-rejects above 500 KB, and leaves PHP to MIME/size validation only.
++
+ > **0.2.7 Adaptive Placeholder Engine:** Auto LQIP shows a deterministic gradient immediately, queues missing previews once, and upgrades later visits/cached HTML to a revisioned static LQIP. Apache/LiteSpeed missing-preview requests use a static no-store fallback rather than WordPress/PHP. See [release notes](docs/RELEASE-0.2.7.md).
+ 
+ > **v0.2.4:** Adds explicit Progressive JPEG / Interlaced PNG controls and a server encoder verification button. Preserves the v0.2.3 Apache/multisite hotfix. See [release notes](docs/RELEASE-0.2.4.md).
+ 
+ > **0.2.3 Apache + multisite routing hotfix:** MediaFlow now repairs the v0.2.2 `Options -Indexes` guard that could trigger Apache HTTP 500 and installs an explicit cold-cache route under `wp-content/image-cache/`. Network Activate on multisite; settings, signatures and generated caches remain per-site. See [release notes](docs/RELEASE-0.2.3.md).
+ 
+-# MediaFlow v0.2.7 — Adaptive Placeholder Engine
++# MediaFlow v0.2.8 — Browser Upload Pipeline + Adaptive Delivery
+ 
+ MediaFlow is an experimental WordPress adaptive image engine. It keeps source attachments under normal WordPress media management and generates responsive derivatives only when requested.
+ 
+@@ -19,6 +21,28 @@
+ 7. Cache directories and manifests are sharded for large media libraries.
+ 8. Logical cache purge is O(1) via namespace rotation; wp-admin never recursively enumerates millions of cache files.
+ 
++## Browser upload pipeline (v0.2.8)
++
++When enabled in Tools → MediaFlow, browser-selected images follow this source-upload path before WordPress stores the attachment:
++
++```text
++select image
++  -> validate supported type + configured original byte limit
++  -> decode in browser and normalize EXIF orientation
++  -> constrain to configured max width/height (no upscaling)
++  -> transfer the oriented bitmap to a Web Worker
++  -> encode WebP and binary-search the highest quality <= 480 KB
++  -> if even minimum quality is too large, reduce dimensions by 10% and retry
++  -> final browser validation: WebP <= 500 KB
++  -> upload to WordPress
++  -> PHP validates final MIME + bytes only
++  -> normal Media Library attachment handling continues
++```
++
++Defaults are 2560×2560 maximum dimensions and a 25 MB maximum original browser-processing size. JPEG, PNG, WebP, AVIF, HEIC and HEIF sources are accepted when the browser can decode them; animated GIF is intentionally not flattened into a still WebP. Non-image attachments are not changed.
++
++On WordPress 7.1+, MediaFlow disables core client-side media processing while this optimizer is enabled so the same source is not processed twice.
++
+ ## Storage layout
+ 
+ ```text
+@@ -130,7 +154,7 @@
+ 
+ ## Current development status
+ 
+-v0.2.7 is an adaptive-placeholder staging build, not yet a claim of production certification for a 500k-post site. The architecture has synthetic tests for sharding, zero MediaFlow option queries on filesystem-ready runtime paths, cache-miss contention and static delivery. A real 500k-post deployment still needs full WordPress/theme/plugin integration testing on the target hosting stack.
++v0.2.8 is a browser-upload/adaptive-placeholder staging build, not yet a claim of production certification for a 500k-post site. The architecture has synthetic tests for sharding, zero MediaFlow option queries on filesystem-ready runtime paths, cache-miss contention and static delivery. A real 500k-post deployment still needs full WordPress/theme/plugin integration testing on the target hosting stack.
+ 
+ Not yet included: direct cache-miss gateway without WordPress bootstrap, existing-thumbnail migration/removal, focal-point UI, WooCommerce-specific adapter, object storage/CDN adapter and production telemetry.
+ 
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/assets/js/mediaflow-upload-worker.js mediaflow_work/mediaflow/assets/js/mediaflow-upload-worker.js
+--- mediaflow_baseline_027/mediaflow/assets/js/mediaflow-upload-worker.js	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/assets/js/mediaflow-upload-worker.js	2026-10-02 20:17:00.142683239 +0000
+@@ -0,0 +1,129 @@
++'use strict';
++
++const MIN_QUALITY = 0.25;
++const MAX_QUALITY = 0.95;
++const QUALITY_STEPS = 8;
++const DIMENSION_STEP = 0.90;
++const MIN_LONG_EDGE = 64;
++const MAX_DIMENSION_PASSES = 48;
++
++function constrainedSize(width, height, maxWidth, maxHeight) {
++    const scale = Math.min(1, maxWidth / width, maxHeight / height);
++    return {
++        width: Math.max(1, Math.round(width * scale)),
++        height: Math.max(1, Math.round(height * scale))
++    };
++}
++
++async function encode(canvas, quality) {
++    return canvas.convertToBlob({ type: 'image/webp', quality });
++}
++
++async function bestQuality(canvas, targetBytes) {
++    const top = await encode(canvas, MAX_QUALITY);
++    if (top.size <= targetBytes) {
++        return { blob: top, quality: MAX_QUALITY, fits: true };
++    }
++
++    const bottom = await encode(canvas, MIN_QUALITY);
++    if (bottom.size > targetBytes) {
++        return { blob: bottom, quality: MIN_QUALITY, fits: false };
++    }
++
++    let lower = MIN_QUALITY;
++    let upper = MAX_QUALITY;
++    let bestBlob = bottom;
++    let best = MIN_QUALITY;
++
++    for (let i = 0; i < QUALITY_STEPS; i += 1) {
++        const candidateQuality = (lower + upper) / 2;
++        const candidate = await encode(canvas, candidateQuality);
++        if (candidate.size <= targetBytes) {
++            bestBlob = candidate;
++            best = candidateQuality;
++            lower = candidateQuality;
++        } else {
++            upper = candidateQuality;
++        }
++    }
++
++    return { blob: bestBlob, quality: best, fits: true };
++}
++
++async function processImage(bitmap, options) {
++    const targetBytes = Number(options.targetBytes);
++    const hardBytes = Number(options.hardBytes);
++    const maxWidth = Math.max(1, Number(options.maxWidth));
++    const maxHeight = Math.max(1, Number(options.maxHeight));
++
++    let size = constrainedSize(bitmap.width, bitmap.height, maxWidth, maxHeight);
++    let finalResult = null;
++    let finalSize = size;
++
++    for (let pass = 0; pass < MAX_DIMENSION_PASSES; pass += 1) {
++        const canvas = new OffscreenCanvas(size.width, size.height);
++        const context = canvas.getContext('2d', { alpha: true });
++        if (!context) {
++            throw new Error('Canvas 2D is unavailable in the upload worker.');
++        }
++        context.drawImage(bitmap, 0, 0, size.width, size.height);
++
++        finalResult = await bestQuality(canvas, targetBytes);
++        finalSize = { width: size.width, height: size.height };
++        if (finalResult.fits && finalResult.blob.size <= targetBytes) {
++            return {
++                blob: finalResult.blob,
++                width: size.width,
++                height: size.height,
++                quality: finalResult.quality,
++                passes: pass + 1
++            };
++        }
++
++        const longEdge = Math.max(size.width, size.height);
++        if (longEdge <= MIN_LONG_EDGE) {
++            break;
++        }
++
++        const nextWidth = Math.max(1, Math.round(size.width * DIMENSION_STEP));
++        const nextHeight = Math.max(1, Math.round(size.height * DIMENSION_STEP));
++        if (nextWidth === size.width && nextHeight === size.height) {
++            break;
++        }
++        size = { width: nextWidth, height: nextHeight };
++    }
++
++    if (finalResult && finalResult.blob.size <= hardBytes) {
++        return {
++            blob: finalResult.blob,
++            width: finalSize.width,
++            height: finalSize.height,
++            quality: finalResult.quality,
++            passes: MAX_DIMENSION_PASSES
++        };
++    }
++
++    throw new Error('Unable to satisfy the final WebP byte ceiling.');
++}
++
++self.addEventListener('message', async (event) => {
++    const data = event.data || {};
++    if (!data.id || !data.bitmap) {
++        return;
++    }
++
++    try {
++        const result = await processImage(data.bitmap, data.options || {});
++        self.postMessage({ id: data.id, ok: true, ...result });
++    } catch (error) {
++        self.postMessage({
++            id: data.id,
++            ok: false,
++            message: error instanceof Error ? error.message : String(error)
++        });
++    } finally {
++        if (data.bitmap && typeof data.bitmap.close === 'function') {
++            data.bitmap.close();
++        }
++    }
++});
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/assets/js/mediaflow-upload.js mediaflow_work/mediaflow/assets/js/mediaflow-upload.js
+--- mediaflow_baseline_027/mediaflow/assets/js/mediaflow-upload.js	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/assets/js/mediaflow-upload.js	2026-10-02 20:17:00.142825173 +0000
+@@ -0,0 +1,251 @@
++(function () {
++    'use strict';
++
++    const config = window.MediaFlowUploadConfig || null;
++    if (!config || !config.workerUrl) {
++        return;
++    }
++
++    const supported = new Set(config.supportedTypes || []);
++    const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
++    const NativeXHR = window.XMLHttpRequest;
++    const jobs = new Map();
++    let worker = null;
++    let sequence = 0;
++
++    function humanBytes(bytes) {
++        if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
++        return Math.ceil(bytes / 1024) + ' KB';
++    }
++
++    function showNotice(message) {
++        if (window.console && console.error) {
++            console.error('[MediaFlow]', message);
++        }
++        const id = 'mediaflow-upload-notice';
++        let notice = document.getElementById(id);
++        if (!notice && document.body) {
++            notice = document.createElement('div');
++            notice.id = id;
++            notice.className = 'notice notice-error is-dismissible';
++            notice.setAttribute('role', 'alert');
++            notice.style.margin = '12px 20px';
++            const paragraph = document.createElement('p');
++            notice.appendChild(paragraph);
++            const target = document.querySelector('.wrap') || document.body;
++            target.insertBefore(notice, target.firstChild);
++        }
++        if (notice && notice.firstChild) {
++            notice.firstChild.textContent = message;
++        }
++        if (window.wp && window.wp.a11y && typeof window.wp.a11y.speak === 'function') {
++            window.wp.a11y.speak(message, 'assertive');
++        }
++    }
++
++    function uploadEndpoint(url, formData) {
++        let parsed;
++        try {
++            parsed = new URL(String(url || ''), window.location.href);
++        } catch (error) {
++            return false;
++        }
++
++        if (/\/wp-admin\/async-upload\.php$/.test(parsed.pathname)) {
++            return true;
++        }
++        if (/\/wp-json\/wp\/v2\/media\/?$/.test(parsed.pathname)) {
++            return true;
++        }
++        if ((parsed.searchParams.get('rest_route') || '').replace(/\/$/, '') === '/wp/v2/media') {
++            return true;
++        }
++        if (/\/wp-admin\/admin-ajax\.php$/.test(parsed.pathname) && formData instanceof FormData) {
++            return formData.get('action') === 'upload-attachment';
++        }
++        return false;
++    }
++
++    function fileNameAsWebP(name) {
++        const clean = String(name || 'image').replace(/\.[^.]+$/, '') || 'image';
++        return clean + '.webp';
++    }
++
++    function sourceType(file) {
++        const declared = String(file.type || '').toLowerCase();
++        if (declared) return declared;
++        const match = String(file.name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
++        const extension = match ? match[1] : '';
++        return ({
++            jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
++            avif: 'image/avif', heic: 'image/heic', heif: 'image/heif', gif: 'image/gif'
++        })[extension] || '';
++    }
++
++    function imageFile(value) {
++        if (typeof File === 'undefined' || !(value instanceof File)) return false;
++        const type = sourceType(value);
++        return type.indexOf('image/') === 0 || /\.(?:jpe?g|png|webp|avif|gif|heic|heif)$/i.test(String(value.name || ''));
++    }
++
++    function validateSource(file) {
++        if (!supported.has(sourceType(file))) {
++            throw new Error((config.messages && config.messages.unsupported) || 'Unsupported image type.');
++        }
++        if (file.size <= 0 || file.size > Number(config.maxSourceBytes)) {
++            throw new Error(((config.messages && config.messages.tooLarge) || 'Original image is too large.') + ' Maximum: ' + humanBytes(Number(config.maxSourceBytes)) + '.');
++        }
++    }
++
++    function getWorker() {
++        if (worker) return worker;
++        if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') {
++            throw new Error('This browser does not provide the Web Worker image APIs required by MediaFlow.');
++        }
++        worker = new Worker(config.workerUrl);
++        worker.addEventListener('message', function (event) {
++            const data = event.data || {};
++            const pending = jobs.get(data.id);
++            if (!pending) return;
++            jobs.delete(data.id);
++            if (data.ok) pending.resolve(data);
++            else pending.reject(new Error(data.message || 'Worker image processing failed.'));
++        });
++        worker.addEventListener('error', function (event) {
++            const error = new Error(event.message || 'MediaFlow upload worker failed.');
++            jobs.forEach(function (pending) { pending.reject(error); });
++            jobs.clear();
++            worker.terminate();
++            worker = null;
++        });
++        return worker;
++    }
++
++    async function orientedBitmap(file) {
++        try {
++            return await createImageBitmap(file, { imageOrientation: 'from-image' });
++        } catch (firstError) {
++            // Older implementations either already honor EXIF orientation by
++            // default or do not accept the options dictionary.
++            return createImageBitmap(file);
++        }
++    }
++
++    async function optimize(file) {
++        validateSource(file);
++        const bitmap = await orientedBitmap(file);
++        const id = 'mf-' + Date.now().toString(36) + '-' + (++sequence).toString(36);
++        const currentWorker = getWorker();
++        const resultPromise = new Promise(function (resolve, reject) {
++            jobs.set(id, { resolve: resolve, reject: reject });
++        });
++
++        currentWorker.postMessage({
++            id: id,
++            bitmap: bitmap,
++            options: {
++                maxWidth: Number(config.maxWidth),
++                maxHeight: Number(config.maxHeight),
++                targetBytes: Number(config.targetBytes),
++                hardBytes: Number(config.hardBytes)
++            }
++        }, [bitmap]);
++
++        const result = await resultPromise;
++        if (!(result.blob instanceof Blob) || result.blob.type !== 'image/webp') {
++            throw new Error((config.messages && config.messages.processing) || 'Browser image processing failed.');
++        }
++        if (result.blob.size <= 0 || result.blob.size > Number(config.hardBytes)) {
++            throw new Error((config.messages && config.messages.finalSize) || 'Final image exceeds the upload size limit.');
++        }
++
++        return new File([result.blob], fileNameAsWebP(file.name), {
++            type: 'image/webp',
++            lastModified: file.lastModified || Date.now()
++        });
++    }
++
++    async function transformFormData(body) {
++        if (!(body instanceof FormData)) return body;
++        const entries = Array.from(body.entries());
++        if (!entries.some(function (entry) { return imageFile(entry[1]); })) {
++            return body;
++        }
++
++        const output = new FormData();
++        for (const entry of entries) {
++            const key = entry[0];
++            const value = entry[1];
++            if (!imageFile(value)) {
++                output.append(key, value);
++                continue;
++            }
++            const converted = await optimize(value);
++            output.append(key, converted, converted.name);
++        }
++        return output;
++    }
++
++    function markedHeaders(headers) {
++        const result = new Headers(headers || {});
++        result.set('X-MediaFlow-Upload', '1');
++        return result;
++    }
++
++    if (nativeFetch) {
++        window.fetch = function (input, init) {
++            const isRequest = typeof Request !== 'undefined' && input instanceof Request;
++            const requestUrl = isRequest ? input.url : input;
++            const options = init ? Object.assign({}, init) : {};
++            const body = options.body;
++            if (!(body instanceof FormData) || !uploadEndpoint(requestUrl, body)) {
++                return nativeFetch(input, init);
++            }
++
++            return transformFormData(body).then(function (processed) {
++                options.body = processed;
++                options.headers = markedHeaders(options.headers || (isRequest ? input.headers : undefined));
++                return nativeFetch(input, options);
++            }).catch(function (error) {
++                showNotice(error && error.message ? error.message : String(error));
++                throw error;
++            });
++        };
++    }
++
++    if (NativeXHR && NativeXHR.prototype) {
++        const originalOpen = NativeXHR.prototype.open;
++        const originalSend = NativeXHR.prototype.send;
++
++        NativeXHR.prototype.open = function (method, url) {
++            this.__mediaflowUrl = url;
++            return originalOpen.apply(this, arguments);
++        };
++
++        NativeXHR.prototype.send = function (body) {
++            if (!(body instanceof FormData) || !uploadEndpoint(this.__mediaflowUrl, body)) {
++                return originalSend.call(this, body);
++            }
++
++            const xhr = this;
++            try {
++                xhr.setRequestHeader('X-MediaFlow-Upload', '1');
++            } catch (headerError) {
++                // WordPress upload requests are same-origin. If another script
++                // has already moved the XHR state, normal server validation is
++                // still the final guard.
++            }
++
++            transformFormData(body).then(function (processed) {
++                if (xhr.readyState === 1) originalSend.call(xhr, processed);
++            }).catch(function (error) {
++                showNotice(error && error.message ? error.message : String(error));
++                // Send the untouched body so WordPress receives a normal HTTP
++                // response; MediaFlow's server validator will reject an image
++                // that does not satisfy the WebP/500 KB contract.
++                if (xhr.readyState === 1) originalSend.call(xhr, body);
++            });
++            return undefined;
++        };
++    }
++})();
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/docs/ARCHITECTURE.md mediaflow_work/mediaflow/docs/ARCHITECTURE.md
+--- mediaflow_baseline_027/mediaflow/docs/ARCHITECTURE.md	2026-09-14 03:23:02.000000000 +0000
++++ mediaflow_work/mediaflow/docs/ARCHITECTURE.md	2026-10-02 20:16:09.994692565 +0000
+@@ -95,3 +95,9 @@
+ ## WordPress 7.1
+ 
+ MediaFlow remains idempotent across `wp_generate_attachment_metadata` create/update passes. Registered physical sizes are controlled through `intermediate_image_sizes_advanced`; the plugin does not depend on server-side upload-time `WP_Image_Editor` hooks that the 7.1 client-side processing path can bypass.
++
++## v0.2.8 browser source-upload boundary
++
++MediaFlow now has two deliberately separate processing planes. The **upload plane** runs before WordPress stores a browser-selected image: browser decode/orientation, bounded resize, Web Worker WebP encode, 480 KB quality target, dimension fallback, 500 KB hard validation. The **delivery plane** remains the existing manifest/resolver/static derivative architecture.
++
++The PHP upload guard does not resize or recompress MediaFlow browser uploads. It validates that the resulting source is WebP and no larger than 500,000 bytes, then allows normal WordPress attachment handling to continue. Non-image attachments are untouched. REST/sideload validation is scoped to requests marked by the MediaFlow browser transport so server-side imports are not unexpectedly converted or rejected.
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/docs/RELEASE-0.2.8.md mediaflow_work/mediaflow/docs/RELEASE-0.2.8.md
+--- mediaflow_baseline_027/mediaflow/docs/RELEASE-0.2.8.md	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/docs/RELEASE-0.2.8.md	2026-10-02 20:20:26.853289063 +0000
+@@ -0,0 +1,70 @@
++# MediaFlow 0.2.8 — Browser Upload Pipeline
++
++## Goal
++
++Move source-image optimization ahead of WordPress storage so the server receives a final WebP rather than a large JPEG/PNG/AVIF that must be resized and recompressed in PHP.
++
++## Pipeline
++
++```text
++SELECT IMAGE
++      ↓
++Validate supported type + configured original size
++      ↓
++Read image in browser / normalize orientation
++      ↓
++Constrain to configured max dimensions (no upscale)
++      ↓
++Transfer ImageBitmap to Web Worker
++      ↓
++Encode WebP
++      ↓
++Binary-search highest quality <= 480 KB
++      ↓
++Still > 480 KB? — YES → reduce dimensions by 10% → encode/search again
++      ↓
++Final browser validation: WebP <= 500 KB
++      ↓
++Upload to WordPress
++      ↓
++Server validates MIME + size only
++      ↓
++Normal Media Library handling
++```
++
++## Defaults
++
++- Browser upload optimizer: enabled
++- Maximum dimensions: 2560 × 2560 px
++- Maximum original browser-processing size: 25 MB
++- Working target: 480,000 bytes
++- Hard final ceiling: 500,000 bytes
++- Highest WebP quality considered: 0.95
++- Lowest quality before a dimension reduction: 0.25
++- Dimension reduction step: 10%
++
++## Source formats
++
++The browser path accepts JPEG, PNG, WebP, AVIF, HEIC and HEIF when the current browser can decode the source. Animated GIF is not accepted by the optimizer because converting it through a canvas would flatten animation. Non-image attachments remain outside the optimizer.
++
++## WordPress 7.1 compatibility
++
++WordPress 7.1 introduced its own client-side media processing path. MediaFlow disables that core path while MediaFlow upload optimization is enabled; otherwise the same source could be decoded/encoded twice before storage. The existing MediaFlow delivery/cache pipeline is unchanged.
++
++## Server contract
++
++For classic browser image uploads, the pre-upload guard requires a real WebP MIME and a final size <= 500,000 bytes. For REST media uploads that use WordPress's sideload internals, the same validation is applied only when the request carries MediaFlow's browser-upload marker. This keeps remote/server-side sideload imports compatible.
++
++The server validator intentionally performs no resize or recompression. WordPress core still performs its normal security/file-type checks after the MediaFlow prefilter.
++
++## Tests performed in this package
++
++- PHP lint across the plugin tree.
++- JavaScript syntax checks for the browser transport and worker.
++- Mocked browser transport test verifies fetch interception, WebP file replacement, MediaFlow marker header and preservation of non-file multipart fields.
++- Standalone upload-contract test: 500,000-byte WebP accepted; 500,001-byte WebP rejected; JPEG final rejected; non-image attachment preserved; unmarked sideload preserved; marked REST JPEG rejected.
++- Existing MediaFlow standalone regression suite for routing, multisite context handling, LQIP generation, encoding fixtures, lock contention and static source contracts.
++
++## Staging validation still required
++
++Browser behavior must still be validated in a real WordPress staging site, especially Media Library grid/list upload, media modal upload, Block Editor upload, multi-file selection, browser cancellation/retry, HEIC/HEIF decode availability and host/CDN request limits.
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/docs/TEST-RESULTS.txt mediaflow_work/mediaflow/docs/TEST-RESULTS.txt
+--- mediaflow_baseline_027/mediaflow/docs/TEST-RESULTS.txt	2026-09-14 03:24:52.000000000 +0000
++++ mediaflow_work/mediaflow/docs/TEST-RESULTS.txt	2026-10-02 20:20:26.853169212 +0000
+@@ -1,70 +1,69 @@
+-MediaFlow 0.2.7 local validation
++MediaFlow 0.2.8 local validation
+ =================================
+ 
+-PRE-BUILD AUDIT — 0.2.6.1 BASELINE
+-PASS: PHP 8.4 lint
+-PASS: source/security contracts
+-PASS: nested multisite context re-entry
+-PASS: Apache routing-guard migration
+-PASS: v0.2.6.1 single-decode LQIP regression
+-PASS: request-global LQIP count/byte budget
+-PASS: encoder lock contention/fixture tests
+-
+-Pre-build gaps identified:
+-- existing attachments required explicit LQIP rebuild/pre-warm
+-- missing LQIP fallback was solid color only
+-- inline LQIP could not improve already-cached page HTML after background generation
+-- no first-use bounded queue existed
+-- naive external LQIP misses could have bootstrapped PHP at scale
+-- external immutable preview identity needed source revision
+-
+-POST-BUILD AUDIT — 0.2.7
+-PASS: PHP lint (21 PHP files)
+-PASS: signature validation precedes normal manifest recovery
++BASELINE PRESERVED — 0.2.7
++- Adaptive Placeholder Engine and static cache architecture retained.
++- Existing routing, multisite context, LQIP generation, encoding and lock-contention regressions rerun after the upload-pipeline changes.
++
++POST-BUILD AUDIT — 0.2.8
++PASS: PHP lint across plugin/test PHP files
++PASS: JavaScript syntax check: assets/js/mediaflow-upload.js
++PASS: JavaScript syntax check: assets/js/mediaflow-upload-worker.js
++PASS: mocked browser transport test: fetch upload intercepted, WebP replacement inserted, marker header set, multipart fields preserved
++PASS: upload source contracts include browser type/source-size validation
++PASS: browser orientation normalization uses createImageBitmap(... imageOrientation: from-image)
++PASS: heavy WebP work is isolated in a Web Worker / OffscreenCanvas path
++PASS: WebP quality search targets 480,000 bytes
++PASS: dimension fallback reduces width/height by 10% and retries
++PASS: final client hard validation is <= 500,000 bytes
++PASS: classic image upload server guard requires real WebP MIME
++PASS: classic image upload server guard rejects > 500,000 bytes
++PASS: REST/sideload validation is scoped to MediaFlow-marked browser requests
++PASS: non-image attachment upload remains outside MediaFlow validation
++PASS: unmarked server-side sideload/import remains compatible
++PASS: WordPress 7.1+ core client-side media path is disabled while MediaFlow owns the source transform
++PASS: exact 500,000-byte WebP accepted by standalone server-contract test
++PASS: 500,001-byte WebP rejected by standalone server-contract test
++PASS: non-WebP final image rejected by standalone server-contract test
++PASS: signature validation still precedes normal derivative manifest recovery
+ PASS: Apache/LiteSpeed routing schema 4 contains no Options directive
+ PASS: missing Auto-LQIP route uses transparent static no-store fallback
+-PASS: normal signed derivative cold route remains separate
+-PASS: Auto-LQIP URL includes source revision + LQIP settings signature
+-PASS: current encoder extension is used consistently for rendered URL/readiness/generation
+-PASS: existing-manifest Auto migration avoids attachment DB/source fingerprint/decode work
+-PASS: filesystem queue marker deduplicates first-visit enqueue
+-PASS: one-image bounded background generation publishes static LQIP atomically
+-PASS: bounded 64-slot LQIP generation lock pool
+-PASS: deterministic per-image gradient fallback
+-PASS: single source decode reused across adaptive LQIP fallback attempts
+-PASS: request-global Inline-LQIP count/byte budget survives context reconstruction
+-PASS: nested multisite switch/restore regression
+-PASS: failed multisite reload preserves old graph and can retry
+-PASS: routing guard migration is versioned/idempotent and preserves custom directives
+-PASS: 24-process encoder contention: peak encoders <= 2, busy workers fail fast, slots reusable
++PASS: revisioned Auto-LQIP URL/encoder-extension regressions
++PASS: filesystem queue anti-stampede regression
++PASS: bounded LQIP generation lock pool regression
++PASS: single-decode adaptive LQIP fallback regression
++PASS: request-global inline LQIP count/byte budget regression
++PASS: nested multisite context switch/restore regression
++PASS: failed multisite reload preserves old service graph and can retry
++PASS: routing guard migration remains versioned/idempotent
++PASS: 24-process encoder admission: peak <= 2; busy workers fail fast; slots reusable
+ PASS: progressive JPEG fixture
+ PASS: baseline JPEG fixture
+ PASS: Adam7 PNG fixture
+ PASS: plain PNG fixture
+ PASS: invalid JPEG rejected
+-PASS: multisite smoke exits 0
+-PASS: runtime-source hygiene (no eval/shell_exec/system/passthru/base64_decode)
+-PASS: no .env/PEM/key/log/tmp artifacts in source tree
+ 
+-PERFORMANCE CONTRACT AFTER BUILD
+-- warm derivative: static file; no WordPress/PHP
+-- warm Auto-LQIP: static file; no WordPress/PHP
+-- cold Auto-LQIP on Apache/LiteSpeed: transparent static no-store fallback; no WordPress/PHP
+-- first dynamic render: deterministic gradient + small queue marker; no source decode
+-- background LQIP worker: one image/run; 8-second budget; single source decode
+-- new upload: attempts LQIP during normal attachment processing
+-- Inline LQIP: 8 previews/page default + 24 KB total HTML budget default
+-- Auto LQIP: 8 preview URLs/page default; additional images use gradient only
++UPLOAD PERFORMANCE CONTRACT AFTER BUILD
++- selected image is decoded/oriented in the browser
++- source is never upscaled; configured max dimensions default to 2560 × 2560
++- encoding runs in a Web Worker where supported by the required browser path
++- highest WebP quality under 480 KB is selected by bounded binary search
++- if minimum quality misses 480 KB, dimensions fall by 10% and the search repeats
++- browser refuses a final result above 500 KB
++- PHP validates final MIME + size only; it does not recompress the MediaFlow browser source
++- normal WordPress attachment handling continues after validation
++- existing MediaFlow derivative/static-cache delivery plane remains separate
+ 
+ NOT RUN / REQUIRES TARGET STAGING
+-- real WordPress hook lifecycle with production theme/plugins
+-- real GD/Imagick WebP/JPEG generation and memory behavior
+-- effective Cloudways/Nginx/LiteSpeed routing configuration
+-- CDN handling of pending no-store fallback / negative caching
+-- full-page cache compatibility in the target stack
+-- WooCommerce gallery/variation/zoom behavior
+-- page builders and custom theme markup
+-- browser visual testing on throttled networks
+-- sustained production-like traffic and large real-library queue behavior
++- actual WordPress Media Library grid/list upload UI
++- media modal upload from post/editor screens
++- WordPress 7.1 Block Editor upload transport on the target install
++- multi-file cancellation/retry and network interruption behavior
++- real browser Web Worker/OffscreenCanvas execution (headless Chromium in this sandbox did not complete reliably)
++- HEIC/HEIF decode availability across target browsers/OS codecs
++- real GD/Imagick generation for downstream MediaFlow derivatives/LQIP
++- effective Cloudways/Nginx/LiteSpeed/CDN routing and limits
++- WooCommerce/page-builder/theme integration
++- sustained production-like traffic and large-library behavior
+ 
+ This is a code/synthetic post-audit, not production certification.
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/includes/class-admin.php mediaflow_work/mediaflow/includes/class-admin.php
+--- mediaflow_baseline_027/mediaflow/includes/class-admin.php	2026-09-14 03:16:41.000000000 +0000
++++ mediaflow_work/mediaflow/includes/class-admin.php	2026-10-02 20:15:05.624136027 +0000
+@@ -100,6 +100,28 @@
+                         <td><input id="mediaflow-quality" type="number" min="1" max="100" name="quality" value="<?php echo esc_attr( (string) $settings['quality'] ); ?>"></td>
+                     </tr>
+                     <tr>
++                        <th scope="row">Browser upload optimization</th>
++                        <td>
++                            <label><input type="checkbox" name="upload_optimizer_enabled" value="1" <?php checked( ! empty( $settings['upload_optimizer_enabled'] ) ); ?>> Convert selected images to WebP in the browser before WordPress upload</label>
++                            <p class="description">Pipeline: validate source → normalize orientation → constrain dimensions → Web Worker WebP encode → binary-search quality toward 480 KB → reduce dimensions when needed → hard validation at 500 KB. The server does not recompress this source upload.</p>
++                        </td>
++                    </tr>
++                    <tr>
++                        <th scope="row">Upload dimensions</th>
++                        <td>
++                            <label for="mediaflow-upload-max-width">Max width</label>
++                            <input id="mediaflow-upload-max-width" type="number" min="320" max="8192" name="upload_max_width" value="<?php echo esc_attr( (string) $settings['upload_max_width'] ); ?>" style="width:100px"> px
++                            &nbsp;&nbsp;
++                            <label for="mediaflow-upload-max-height">Max height</label>
++                            <input id="mediaflow-upload-max-height" type="number" min="320" max="8192" name="upload_max_height" value="<?php echo esc_attr( (string) $settings['upload_max_height'] ); ?>" style="width:100px"> px
++                            <p class="description">Images are never upscaled. Default 2560 × 2560 mirrors WordPress's traditional large-image threshold while keeping MediaFlow's browser pipeline explicit.</p>
++                        </td>
++                    </tr>
++                    <tr>
++                        <th scope="row"><label for="mediaflow-upload-source-mb">Maximum original image size</label></th>
++                        <td><input id="mediaflow-upload-source-mb" type="number" min="1" max="100" name="upload_max_source_mb" value="<?php echo esc_attr( (string) $settings['upload_max_source_mb'] ); ?>" style="width:90px"> MB <span class="description">Checked in the browser before decoding; default 25 MB.</span></td>
++                    </tr>
++                    <tr>
+                         <th scope="row">Image encoding</th>
+                         <td>
+                             <label><input type="checkbox" name="progressive_jpeg" value="1" <?php checked( ! empty( $settings['progressive_jpeg'] ) ); ?>> Progressive JPEG</label><br>
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/includes/class-plugin.php mediaflow_work/mediaflow/includes/class-plugin.php
+--- mediaflow_baseline_027/mediaflow/includes/class-plugin.php	2026-09-14 03:23:02.000000000 +0000
++++ mediaflow_work/mediaflow/includes/class-plugin.php	2026-10-02 20:14:12.842239954 +0000
+@@ -8,6 +8,7 @@
+     private bool $reloading_context = false;
+     private Paths $paths;
+     private Settings $settings;
++    private Upload_Optimizer $upload_optimizer;
+     private Manifest_Store $manifests;
+     private Resolver $resolver;
+     private Processor $processor;
+@@ -28,6 +29,7 @@
+             $site_id = get_current_blog_id();
+             $paths = new Paths();
+             $settings = new Settings( $paths );
++            $upload_optimizer = new Upload_Optimizer( $settings );
+             $manifests = new Manifest_Store( $paths, $settings );
+             $resolver = new Resolver( $paths, $settings, $manifests );
+             $processor = new Processor( $paths, $manifests, $resolver );
+@@ -39,6 +41,7 @@
+             }
+             $this->paths = $paths;
+             $this->settings = $settings;
++            $this->upload_optimizer = $upload_optimizer;
+             $this->manifests = $manifests;
+             $this->resolver = $resolver;
+             $this->processor = $processor;
+@@ -82,6 +85,7 @@
+         $this->booted = true;
+ 
+         add_action( 'switch_blog', array( $this, 'reload_context' ), 10, 0 );
++        $this->upload_optimizer->hooks();
+         add_filter( 'intermediate_image_sizes_advanced', array( $this, 'disable_intermediate_sizes' ), 999, 3 );
+ 
+         add_filter( 'wp_generate_attachment_metadata', array( $this, 'capture_manifest' ), 999, 3 );
+@@ -164,6 +168,10 @@
+         return $this->settings;
+     }
+ 
++    public function upload_optimizer(): Upload_Optimizer {
++        return $this->upload_optimizer;
++    }
++
+     public function manifests(): Manifest_Store {
+         return $this->manifests;
+     }
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/includes/class-settings.php mediaflow_work/mediaflow/includes/class-settings.php
+--- mediaflow_baseline_027/mediaflow/includes/class-settings.php	2026-09-14 03:10:34.000000000 +0000
++++ mediaflow_work/mediaflow/includes/class-settings.php	2026-10-02 20:13:52.364271764 +0000
+@@ -47,6 +47,10 @@
+             'lqip_max_total_bytes' => 24576,
+             'widths'               => array( 320, 480, 640, 768, 1024, 1200, 1600, 1920 ),
+             'max_srcset_candidates'=> 4,
++            'upload_optimizer_enabled' => true,
++            'upload_max_width'     => 2560,
++            'upload_max_height'    => 2560,
++            'upload_max_source_mb' => 25,
+             'cache_namespace'      => 'v0200',
+         );
+     }
+@@ -139,6 +143,23 @@
+         return max( 2, min( 6, absint( $this->values['max_srcset_candidates'] ?? 4 ) ) );
+     }
+ 
++    public function upload_optimizer_enabled(): bool {
++        return ! empty( $this->values['upload_optimizer_enabled'] );
++    }
++
++    public function upload_max_width(): int {
++        return max( 320, min( 8192, absint( $this->values['upload_max_width'] ?? 2560 ) ) );
++    }
++
++    public function upload_max_height(): int {
++        return max( 320, min( 8192, absint( $this->values['upload_max_height'] ?? 2560 ) ) );
++    }
++
++    public function upload_max_source_bytes(): int {
++        $megabytes = max( 1, min( 100, absint( $this->values['upload_max_source_mb'] ?? 25 ) ) );
++        return $megabytes * 1024 * 1024;
++    }
++
+     public function preferred_format(): string {
+         $format = (string) $this->values['format'];
+         if ( ! in_array( $format, array( 'auto', 'webp', 'avif', 'original' ), true ) ) {
+@@ -261,6 +282,10 @@
+             'lqip_max_total_bytes'  => max( 4096, min( 262144, absint( $input['lqip_max_total_bytes'] ?? 24576 ) ) ),
+             'widths'                => $widths,
+             'max_srcset_candidates' => max( 2, min( 6, absint( $input['max_srcset_candidates'] ?? 4 ) ) ),
++            'upload_optimizer_enabled' => ! empty( $input['upload_optimizer_enabled'] ),
++            'upload_max_width'      => max( 320, min( 8192, absint( $input['upload_max_width'] ?? 2560 ) ) ),
++            'upload_max_height'     => max( 320, min( 8192, absint( $input['upload_max_height'] ?? 2560 ) ) ),
++            'upload_max_source_mb'  => max( 1, min( 100, absint( $input['upload_max_source_mb'] ?? 25 ) ) ),
+             'cache_namespace'       => $encoding_changed ? 'v' . bin2hex( random_bytes( 4 ) ) : $this->cache_namespace(),
+         );
+ 
+@@ -305,6 +330,10 @@
+         sort( $widths, SORT_NUMERIC );
+         $values['widths'] = $widths ?: $defaults['widths'];
+         $values['max_srcset_candidates'] = max( 2, min( 6, absint( $values['max_srcset_candidates'] ) ) );
++        $values['upload_optimizer_enabled'] = ! empty( $values['upload_optimizer_enabled'] );
++        $values['upload_max_width'] = max( 320, min( 8192, absint( $values['upload_max_width'] ?? 2560 ) ) );
++        $values['upload_max_height'] = max( 320, min( 8192, absint( $values['upload_max_height'] ?? 2560 ) ) );
++        $values['upload_max_source_mb'] = max( 1, min( 100, absint( $values['upload_max_source_mb'] ?? 25 ) ) );
+ 
+         $namespace = (string) $values['cache_namespace'];
+         $values['cache_namespace'] = preg_match( '/^[a-zA-Z0-9_-]{4,32}$/', $namespace ) ? $namespace : 'v0200';
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/includes/class-upload-optimizer.php mediaflow_work/mediaflow/includes/class-upload-optimizer.php
+--- mediaflow_baseline_027/mediaflow/includes/class-upload-optimizer.php	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/includes/class-upload-optimizer.php	2026-10-02 20:15:05.623923687 +0000
+@@ -0,0 +1,139 @@
++<?php
++namespace MediaFlow;
++
++/**
++ * Browser-first source upload optimizer.
++ *
++ * The browser produces the final WebP source before WordPress receives it.
++ * PHP never resizes or recompresses the upload in this path; it only verifies
++ * the resulting MIME type and hard byte ceiling before normal WordPress upload
++ * handling continues.
++ */
++final class Upload_Optimizer {
++    public const TARGET_BYTES = 480000; // 480 KB working target.
++    public const HARD_BYTES   = 500000; // 500 KB final ceiling.
++
++    private Settings $settings;
++
++    public function __construct( Settings $settings ) {
++        $this->settings = $settings;
++    }
++
++    public function hooks(): void {
++        add_filter( 'wp_client_side_media_processing_enabled', static fn( $enabled ) => Plugin::instance()->upload_optimizer()->disable_core_client_processing( (bool) $enabled ), 1000 );
++        add_action( 'admin_enqueue_scripts', static fn( $hook_suffix ) => Plugin::instance()->upload_optimizer()->enqueue( (string) $hook_suffix ), 1000, 1 );
++        add_filter( 'wp_handle_upload_prefilter', static fn( $file ) => Plugin::instance()->upload_optimizer()->validate_upload( (array) $file ), 1000 );
++        add_filter( 'wp_handle_sideload_prefilter', static fn( $file ) => Plugin::instance()->upload_optimizer()->validate_sideload( (array) $file ), 1000 );
++    }
++
++    /**
++     * WordPress 7.1+ has a separate client-side media pipeline. MediaFlow owns
++     * the source transform when enabled, so running both would encode twice.
++     */
++    public function disable_core_client_processing( bool $enabled ): bool {
++        return $this->settings->upload_optimizer_enabled() ? false : $enabled;
++    }
++
++    public function enqueue( string $hook_suffix = '' ): void {
++        if ( ! $this->settings->upload_optimizer_enabled() || ! current_user_can( 'upload_files' ) ) {
++            return;
++        }
++
++        wp_enqueue_script(
++            'mediaflow-upload-optimizer',
++            MEDIAFLOW_URL . 'assets/js/mediaflow-upload.js',
++            array(),
++            MEDIAFLOW_VERSION,
++            true
++        );
++
++        $config = array(
++            'workerUrl'      => MEDIAFLOW_URL . 'assets/js/mediaflow-upload-worker.js',
++            'maxWidth'       => $this->settings->upload_max_width(),
++            'maxHeight'      => $this->settings->upload_max_height(),
++            'maxSourceBytes' => $this->settings->upload_max_source_bytes(),
++            'targetBytes'    => self::TARGET_BYTES,
++            'hardBytes'      => self::HARD_BYTES,
++            'supportedTypes' => array( 'image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif' ),
++            'messages'       => array(
++                'unsupported' => 'MediaFlow accepts JPEG, PNG, WebP, AVIF, HEIC or HEIF source images when the browser can decode them.',
++                'tooLarge'    => 'The original image exceeds the MediaFlow browser-processing size limit.',
++                'processing'  => 'MediaFlow could not optimize this image in the browser.',
++                'finalSize'   => 'MediaFlow could not reduce this image below the 500 KB upload ceiling.',
++            ),
++        );
++
++        wp_add_inline_script(
++            'mediaflow-upload-optimizer',
++            'window.MediaFlowUploadConfig=' . wp_json_encode( $config, JSON_UNESCAPED_SLASHES ) . ';',
++            'before'
++        );
++    }
++
++    public function validate_upload( array $file ): array {
++        if ( ! $this->settings->upload_optimizer_enabled() ) {
++            return $file;
++        }
++
++        // Classic browser uploads use wp_handle_upload(). Enforce the final
++        // source contract for image uploads even if JavaScript failed to run.
++        if ( $this->looks_like_image( $file ) ) {
++            return $this->validate_final_file( $file );
++        }
++        return $file;
++    }
++
++    public function validate_sideload( array $file ): array {
++        if ( ! $this->settings->upload_optimizer_enabled() ) {
++            return $file;
++        }
++
++        // REST media uploads use the sideload path. Limit this validation to
++        // browser requests marked by MediaFlow so remote imports remain intact.
++        $marker = isset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ) : '';
++        if ( '1' !== $marker || ! $this->looks_like_image( $file ) ) {
++            return $file;
++        }
++        return $this->validate_final_file( $file );
++    }
++
++    private function validate_final_file( array $file ): array {
++        if ( ! empty( $file['error'] ) ) {
++            return $file;
++        }
++
++        $tmp  = isset( $file['tmp_name'] ) ? (string) $file['tmp_name'] : '';
++        $mime = '';
++        if ( '' !== $tmp && is_readable( $tmp ) && function_exists( 'wp_get_image_mime' ) ) {
++            $mime = (string) wp_get_image_mime( $tmp );
++        }
++        if ( '' === $mime ) {
++            $mime = strtolower( (string) ( $file['type'] ?? '' ) );
++        }
++
++        if ( 'image/webp' !== $mime ) {
++            $file['error'] = 'MediaFlow upload rejected: optimized images must arrive as WebP.';
++            return $file;
++        }
++
++        $size = isset( $file['size'] ) ? (int) $file['size'] : 0;
++        if ( $size <= 0 && '' !== $tmp && is_file( $tmp ) ) {
++            $size = (int) filesize( $tmp );
++        }
++        if ( $size <= 0 || $size > self::HARD_BYTES ) {
++            $file['error'] = 'MediaFlow upload rejected: the final WebP must be 500 KB or smaller.';
++            return $file;
++        }
++
++        return $file;
++    }
++
++    private function looks_like_image( array $file ): bool {
++        $type = strtolower( (string) ( $file['type'] ?? '' ) );
++        if ( str_starts_with( $type, 'image/' ) ) {
++            return true;
++        }
++        $name = strtolower( (string) ( $file['name'] ?? '' ) );
++        return (bool) preg_match( '/\.(?:jpe?g|png|webp|avif|gif|heic|heif)$/', $name );
++    }
++}
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/mediaflow.php mediaflow_work/mediaflow/mediaflow.php
+--- mediaflow_baseline_027/mediaflow/mediaflow.php	2026-09-14 03:14:19.000000000 +0000
++++ mediaflow_work/mediaflow/mediaflow.php	2026-10-02 20:14:12.842112552 +0000
+@@ -2,7 +2,7 @@
+ /**
+  * Plugin Name: MediaFlow
+  * Description: On-demand WordPress image resizing with a disposable static cache and no database work on cached image delivery.
+- * Version:     0.2.7
++ * Version:     0.2.8
+  * Author:      MediaFlow
+  * License:     GPL-2.0-or-later
+  * Text Domain: mediaflow
+@@ -14,7 +14,7 @@
+     exit;
+ }
+ 
+-define( 'MEDIAFLOW_VERSION', '0.2.7' );
++define( 'MEDIAFLOW_VERSION', '0.2.8' );
+ define( 'MEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
+ define( 'MEDIAFLOW_FILE', __FILE__ );
+ define( 'MEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
+@@ -31,6 +31,7 @@
+ require_once MEDIAFLOW_DIR . 'includes/class-encoding.php';
+ require_once MEDIAFLOW_DIR . 'includes/class-paths.php';
+ require_once MEDIAFLOW_DIR . 'includes/class-settings.php';
++require_once MEDIAFLOW_DIR . 'includes/class-upload-optimizer.php';
+ require_once MEDIAFLOW_DIR . 'includes/class-manifest-store.php';
+ require_once MEDIAFLOW_DIR . 'includes/class-variant.php';
+ require_once MEDIAFLOW_DIR . 'includes/class-resolver.php';
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/readme.txt mediaflow_work/mediaflow/readme.txt
+--- mediaflow_baseline_027/mediaflow/readme.txt	2026-09-14 03:20:19.000000000 +0000
++++ mediaflow_work/mediaflow/readme.txt	2026-10-02 20:16:09.994562229 +0000
+@@ -3,7 +3,7 @@
+ Tags: images, performance, responsive-images, webp, avif
+ Requires at least: 6.5
+ Requires PHP: 8.1
+-Stable tag: 0.2.7
++Stable tag: 0.2.8
+ License: GPLv2 or later
+ 
+ Experimental on-demand responsive image engine with a disposable static cache.
+@@ -24,6 +24,13 @@
+ 
+ == Changelog ==
+ 
++= 0.2.8 =
++* Add browser-first image upload optimization with orientation normalization, dimension limits and Web Worker WebP encoding.
++* Binary-search the highest quality under a 480 KB target; reduce dimensions by 10% and retry when needed.
++* Enforce a final WebP ceiling of 500 KB without server-side recompression.
++* Add configurable 2560×2560 upload dimensions and 25 MB original browser-processing limit.
++* Avoid double processing with WordPress 7.1+ client-side media while MediaFlow owns the upload transform.
++
+ = 0.2.7 =
+ * Add Auto LQIP: deterministic gradient first, then a revisioned static LQIP generated by a bounded background queue.
+ * Keep missing Auto-LQIPs out of WordPress/PHP on Apache/LiteSpeed by serving a transparent no-store static pending fallback.
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/tests/check_source.py mediaflow_work/mediaflow/tests/check_source.py
+--- mediaflow_baseline_027/mediaflow/tests/check_source.py	2026-09-14 03:24:16.000000000 +0000
++++ mediaflow_work/mediaflow/tests/check_source.py	2026-10-02 20:16:09.994363389 +0000
+@@ -72,8 +72,20 @@
+     assert '__mediaflow-lqip-pending.svg' in paths and 'no-store, max-age=0' in paths
+     main=(ROOT/'mediaflow.php').read_text()
+     assert "MEDIAFLOW_ROUTING_SCHEMA_VERSION', '4'" in main and '$routing_version' in paths
+-    assert "MEDIAFLOW_VERSION', '0.2.7'" in main
+-    print('PASS: v0.2.7 adaptive placeholder, queue, revisioned Auto-LQIP and routing-schema contracts')
++    assert "MEDIAFLOW_VERSION', '0.2.8'" in main
++    print('PASS: v0.2.8 adaptive placeholder and browser-upload contracts')
++    upload=(ROOT/'includes/class-upload-optimizer.php').read_text()
++    upload_js=(ROOT/'assets/js/mediaflow-upload.js').read_text()
++    upload_worker=(ROOT/'assets/js/mediaflow-upload-worker.js').read_text()
++    assert 'TARGET_BYTES = 480000' in upload and 'HARD_BYTES   = 500000' in upload
++    assert 'wp_handle_upload_prefilter' in upload and 'wp_handle_sideload_prefilter' in upload
++    assert 'wp_client_side_media_processing_enabled' in upload
++    assert "'image/webp' !== $mime" in upload and 'size > self::HARD_BYTES' in upload
++    assert 'createImageBitmap' in upload_js and "imageOrientation: 'from-image'" in upload_js
++    assert 'X-MediaFlow-Upload' in upload_js and 'transformFormData' in upload_js
++    assert 'OffscreenCanvas' in upload_worker and 'bestQuality' in upload_worker
++    assert 'DIMENSION_STEP = 0.90' in upload_worker and "type: 'image/webp'" in upload_worker
++    print('PASS: browser upload pipeline, Web Worker WebP search and 500 KB server guard contracts')
+     processor=(ROOT/'includes/class-processor.php').read_text()
+     assert '@unlink( $lock_path )' not in processor
+     assert processor.index('Budget::check(')<processor.index('wp_get_image_editor(')
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/tests/context-reentry.php mediaflow_work/mediaflow/tests/context-reentry.php
+--- mediaflow_baseline_027/mediaflow/tests/context-reentry.php	2026-09-09 22:11:54.000000000 +0000
++++ mediaflow_work/mediaflow/tests/context-reentry.php	2026-10-02 20:16:25.411355187 +0000
+@@ -22,6 +22,7 @@
+             if ( self::$fail ) { throw new \RuntimeException( 'simulated storage failure' ); }
+         }
+     }
++    final class Upload_Optimizer { public function __construct(...$args) {} public function hooks(): void {} }
+     final class Manifest_Store { public function __construct(...$args) {} }
+     final class Resolver { public function __construct(...$args) {} }
+     final class Processor { public function __construct(...$args) {} }
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/tests/upload-browser-contract.js mediaflow_work/mediaflow/tests/upload-browser-contract.js
+--- mediaflow_baseline_027/mediaflow/tests/upload-browser-contract.js	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/tests/upload-browser-contract.js	2026-10-02 20:20:19.181490320 +0000
+@@ -0,0 +1,95 @@
++'use strict';
++
++const fs = require('fs');
++const vm = require('vm');
++
++class TestFile extends Blob {
++    constructor(parts, name, options = {}) {
++        super(parts, options);
++        this.name = name;
++        this.lastModified = options.lastModified || Date.now();
++    }
++}
++
++class TestFormData {
++    constructor() { this.items = []; }
++    append(key, value, filename) {
++        if (filename && value instanceof Blob && !(value instanceof TestFile)) {
++            value = new TestFile([value], filename, { type: value.type });
++        }
++        this.items.push([key, value]);
++    }
++    entries() { return this.items[Symbol.iterator](); }
++    get(key) {
++        const found = this.items.find((item) => item[0] === key);
++        return found ? found[1] : null;
++    }
++}
++
++class TestWorker {
++    constructor(url) { this.url = url; this.handlers = {}; }
++    addEventListener(name, fn) { this.handlers[name] = fn; }
++    postMessage(message) {
++        const blob = new Blob([new Uint8Array(479999)], { type: 'image/webp' });
++        queueMicrotask(() => this.handlers.message({ data: {
++            id: message.id,
++            ok: true,
++            blob,
++            width: 2200,
++            height: 1467,
++            quality: 0.81,
++            passes: 2
++        } }));
++    }
++    terminate() {}
++}
++
++class TestXHR {
++    constructor() { this.readyState = 1; this.headers = {}; }
++    open(method, url) { this.method = method; this.url = url; this.readyState = 1; }
++    setRequestHeader(name, value) { this.headers[name] = value; }
++    send(body) { this.sentBody = body; }
++}
++
++global.window = global;
++global.document = { body: null, getElementById() { return null; }, querySelector() { return null; } };
++global.location = { href: 'https://example.test/wp-admin/upload.php' };
++global.File = TestFile;
++global.FormData = TestFormData;
++global.Worker = TestWorker;
++global.OffscreenCanvas = function () {};
++global.createImageBitmap = async () => ({ width: 3000, height: 2000, close() {} });
++global.XMLHttpRequest = TestXHR;
++let captured = null;
++global.fetch = async (input, init) => { captured = { input, init }; return { ok: true }; };
++global.MediaFlowUploadConfig = {
++    workerUrl: 'https://example.test/wp-content/plugins/mediaflow/assets/js/mediaflow-upload-worker.js',
++    maxWidth: 2560,
++    maxHeight: 2560,
++    maxSourceBytes: 25 * 1024 * 1024,
++    targetBytes: 480000,
++    hardBytes: 500000,
++    supportedTypes: ['image/jpeg','image/png','image/webp','image/avif','image/heic','image/heif'],
++    messages: {}
++};
++
++const source = fs.readFileSync(require('path').join(__dirname, '../assets/js/mediaflow-upload.js'), 'utf8');
++vm.runInThisContext(source, { filename: 'mediaflow-upload.js' });
++
++(async () => {
++    const form = new TestFormData();
++    form.append('name', 'caption');
++    form.append('async-upload', new TestFile([new Uint8Array(1200000)], 'photo.jpg', { type: 'image/jpeg' }));
++    await global.fetch('https://example.test/wp-admin/async-upload.php', { method: 'POST', body: form });
++
++    if (!captured) throw new Error('fetch was not forwarded');
++    const finalFile = captured.init.body.get('async-upload');
++    if (!(finalFile instanceof TestFile)) throw new Error('processed file missing');
++    if (finalFile.name !== 'photo.webp') throw new Error('final extension was not WebP');
++    if (finalFile.type !== 'image/webp') throw new Error('final MIME was not WebP');
++    if (finalFile.size !== 479999 || finalFile.size > 500000) throw new Error('final byte contract failed');
++    if (captured.init.headers.get('X-MediaFlow-Upload') !== '1') throw new Error('upload marker header missing');
++    if (captured.init.body.get('name') !== 'caption') throw new Error('non-file multipart fields were not preserved');
++
++    console.log('PASS: fetch upload intercepted, image converted to WebP, marker set, multipart fields preserved');
++})().catch((error) => { console.error('FAIL:', error); process.exit(1); });
+diff -ruN '--exclude=FILE-MANIFEST.json' '--exclude=BASELINE-DIFF.patch' mediaflow_baseline_027/mediaflow/tests/upload-pipeline.php mediaflow_work/mediaflow/tests/upload-pipeline.php
+--- mediaflow_baseline_027/mediaflow/tests/upload-pipeline.php	1970-01-01 00:00:00.000000000 +0000
++++ mediaflow_work/mediaflow/tests/upload-pipeline.php	2026-10-02 20:15:18.279291179 +0000
+@@ -0,0 +1,48 @@
++<?php
++/**
++ * Standalone browser-upload server-contract smoke test.
++ * Does not load WordPress or perform browser image encoding.
++ */
++
++function absint( $value ): int { return abs( (int) $value ); }
++function sanitize_text_field( $value ): string { return trim( strip_tags( (string) $value ) ); }
++function wp_unslash( $value ) { return $value; }
++function wp_get_image_mime( string $path ): string { return str_ends_with( $path, '.webp' ) ? 'image/webp' : 'image/jpeg'; }
++
++require dirname( __DIR__ ) . '/includes/class-settings.php';
++require dirname( __DIR__ ) . '/includes/class-upload-optimizer.php';
++
++$settings_ref = new ReflectionClass( \MediaFlow\Settings::class );
++$settings = $settings_ref->newInstanceWithoutConstructor();
++$values_prop = $settings_ref->getProperty( 'values' );
++$values_prop->setAccessible( true );
++$values_prop->setValue( $settings, \MediaFlow\Settings::defaults() );
++$optimizer = new \MediaFlow\Upload_Optimizer( $settings );
++
++$pass = static function ( string $message ): void { echo "PASS: {$message}\n"; };
++$fail = static function ( string $message ): void { fwrite( STDERR, "FAIL: {$message}\n" ); exit( 1 ); };
++
++$valid = array( 'name' => 'photo.webp', 'type' => 'image/webp', 'tmp_name' => '/tmp/mediaflow-test.webp', 'size' => 500000, 'error' => 0 );
++$result = $optimizer->validate_upload( $valid );
++empty( $result['error'] ) ? $pass( '500 KB WebP is accepted' ) : $fail( '500 KB WebP should be accepted' );
++
++$oversize = $valid;
++$oversize['size'] = 500001;
++$result = $optimizer->validate_upload( $oversize );
++! empty( $result['error'] ) ? $pass( '500 KB hard ceiling rejects larger WebP' ) : $fail( 'Oversized WebP was accepted' );
++
++$jpeg = array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => '/tmp/mediaflow-test.jpg', 'size' => 120000, 'error' => 0 );
++$result = $optimizer->validate_upload( $jpeg );
++! empty( $result['error'] ) ? $pass( 'classic image upload rejects non-WebP final source' ) : $fail( 'JPEG final source was accepted' );
++
++$document = array( 'name' => 'report.pdf', 'type' => 'application/pdf', 'tmp_name' => '/tmp/report.pdf', 'size' => 800000, 'error' => 0 );
++$result = $optimizer->validate_upload( $document );
++empty( $result['error'] ) ? $pass( 'non-image attachments remain outside MediaFlow upload validation' ) : $fail( 'Non-image attachment was blocked' );
++
++unset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] );
++$result = $optimizer->validate_sideload( $jpeg );
++empty( $result['error'] ) ? $pass( 'unmarked server sideload remains compatible' ) : $fail( 'Unmarked sideload was blocked' );
++
++$_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] = '1';
++$result = $optimizer->validate_sideload( $jpeg );
++! empty( $result['error'] ) ? $pass( 'marked REST browser upload enforces final WebP contract' ) : $fail( 'Marked REST JPEG was accepted' );

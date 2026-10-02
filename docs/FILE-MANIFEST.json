@@ -1,0 +1,301 @@
+{
+  "version": "0.2.8",
+  "baseline": "0.2.7",
+  "note": "Generated against the uploaded MediaFlow 0.2.7 Adaptive Placeholder Engine. Excludes this manifest and generated baseline diff.",
+  "files": [
+    {
+      "file": "CHANGELOG.md",
+      "status": "modified",
+      "sha256": "431d14b3f4fb93c8937fed719804e407b8fc5f2128f04030ed9f0860cb200d1e",
+      "baseline_sha256": "f4e43752dec67f9f9d08e8b75703051bdc9a593e9271fd5d1161cf004f0b73fc"
+    },
+    {
+      "file": "README.md",
+      "status": "modified",
+      "sha256": "e8bc9e2e73e3f297e4615a877f94316df60f50b0ce241a8c04d0eb8d83f13566",
+      "baseline_sha256": "112d3cc5c0830f77eacde3a91f6d45fcfd3e16711b43f37379e2fcce20294e41"
+    },
+    {
+      "file": "assets/js/mediaflow-upload-worker.js",
+      "status": "added",
+      "sha256": "acb9a85f994162a7d5e944f40ceef47dfa95595ddde50fd382c5706d1f8ea37b",
+      "baseline_sha256": null
+    },
+    {
+      "file": "assets/js/mediaflow-upload.js",
+      "status": "added",
+      "sha256": "32427e5fb9988db997f4a0607970e7693df7e41347359bf14a681ebf9f78959b",
+      "baseline_sha256": null
+    },
+    {
+      "file": "docs/ARCHITECTURE.md",
+      "status": "modified",
+      "sha256": "0f45623cab34579a3bf716d0635044c1175846402a4d06b17aca7e75532d766b",
+      "baseline_sha256": "8b6521bd516dfef788791d79f0ecce3f624b6d73c4f744eaacf80521ddd3ae0c"
+    },
+    {
+      "file": "docs/RELEASE-0.2.1.md",
+      "status": "unchanged",
+      "sha256": "330500779cb3e845626cc6c581ffda837eb1dd94a420b247dd1b7b02dad771ca",
+      "baseline_sha256": "330500779cb3e845626cc6c581ffda837eb1dd94a420b247dd1b7b02dad771ca"
+    },
+    {
+      "file": "docs/RELEASE-0.2.2.md",
+      "status": "unchanged",
+      "sha256": "4657c5fbfb66efcf6485c489ebb377fd81384c7628b4cdd2349c8d189a0f35cb",
+      "baseline_sha256": "4657c5fbfb66efcf6485c489ebb377fd81384c7628b4cdd2349c8d189a0f35cb"
+    },
+    {
+      "file": "docs/RELEASE-0.2.3.md",
+      "status": "unchanged",
+      "sha256": "82225a7cea4287893c300fd32b13e0a38277e46a2bef58a4dd1ad6e756e04ceb",
+      "baseline_sha256": "82225a7cea4287893c300fd32b13e0a38277e46a2bef58a4dd1ad6e756e04ceb"
+    },
+    {
+      "file": "docs/RELEASE-0.2.4.md",
+      "status": "unchanged",
+      "sha256": "0a472e2e34484faf81d928e7d3807c1d4c962a7a9527a84bd1179b6f4c4f550a",
+      "baseline_sha256": "0a472e2e34484faf81d928e7d3807c1d4c962a7a9527a84bd1179b6f4c4f550a"
+    },
+    {
+      "file": "docs/RELEASE-0.2.5.md",
+      "status": "unchanged",
+      "sha256": "32d8adbd8085e8eda9557a8612a411659864a90bf90cc33a8b9e294a8012eb1a",
+      "baseline_sha256": "32d8adbd8085e8eda9557a8612a411659864a90bf90cc33a8b9e294a8012eb1a"
+    },
+    {
+      "file": "docs/RELEASE-0.2.6.1.md",
+      "status": "unchanged",
+      "sha256": "c9fbd366f3b5161ba6639ca01fe3dd46ebbf49e902fe3d17248a9693e49fc96a",
+      "baseline_sha256": "c9fbd366f3b5161ba6639ca01fe3dd46ebbf49e902fe3d17248a9693e49fc96a"
+    },
+    {
+      "file": "docs/RELEASE-0.2.6.md",
+      "status": "unchanged",
+      "sha256": "479635df8b769802979cac85a908e1facea8276661c85fd65dc48c669ca9841c",
+      "baseline_sha256": "479635df8b769802979cac85a908e1facea8276661c85fd65dc48c669ca9841c"
+    },
+    {
+      "file": "docs/RELEASE-0.2.7.md",
+      "status": "unchanged",
+      "sha256": "0e74440015155482c544e8ac314baeb32414077feafeb727ed2e9c7e460c432f",
+      "baseline_sha256": "0e74440015155482c544e8ac314baeb32414077feafeb727ed2e9c7e460c432f"
+    },
+    {
+      "file": "docs/RELEASE-0.2.8.md",
+      "status": "added",
+      "sha256": "4db1b134eda838d66b66db789cd05b576a60fe4c1382a02c88fe3eb412fe1756",
+      "baseline_sha256": null
+    },
+    {
+      "file": "docs/SCALING.md",
+      "status": "unchanged",
+      "sha256": "1415e622b2a92a3ab163fdbfb8686749c564057893d44d31fa15758ba5c9c6cb",
+      "baseline_sha256": "1415e622b2a92a3ab163fdbfb8686749c564057893d44d31fa15758ba5c9c6cb"
+    },
+    {
+      "file": "docs/SERVER-NOTES.md",
+      "status": "unchanged",
+      "sha256": "0cd5bc87faab1c311e3261ac5ed4cc6cfbac8a719d40dbf286250024b0521e94",
+      "baseline_sha256": "0cd5bc87faab1c311e3261ac5ed4cc6cfbac8a719d40dbf286250024b0521e94"
+    },
+    {
+      "file": "docs/TEST-RESULTS.txt",
+      "status": "modified",
+      "sha256": "cfb3ddc766b0a9544cc4d9bde44a756a9cdcf2d5fd204367e25e1fc29965aa99",
+      "baseline_sha256": "f5d3e76332b8514e83dfe1e5af1e788f308d6c88a37791f9a2e9c57ddd5dfb50"
+    },
+    {
+      "file": "includes/class-admin.php",
+      "status": "modified",
+      "sha256": "08d724520b54c892cd200802bd15e3b528cd330ebd8b2eeeee667f40ace7effd",
+      "baseline_sha256": "0b1ed07cc477faa4936240aa955da57b2a261cc8119e42d5544bbca439fc5011"
+    },
+    {
+      "file": "includes/class-budget.php",
+      "status": "unchanged",
+      "sha256": "be19d129b873878b18a2a6f9ea0760427dd6c0913de6538b0d0d51ee6801a0b1",
+      "baseline_sha256": "be19d129b873878b18a2a6f9ea0760427dd6c0913de6538b0d0d51ee6801a0b1"
+    },
+    {
+      "file": "includes/class-cli.php",
+      "status": "unchanged",
+      "sha256": "6e39c6e9734025fc2291776ae988a31a4e5ccc6c442878f3d6388365020e467b",
+      "baseline_sha256": "6e39c6e9734025fc2291776ae988a31a4e5ccc6c442878f3d6388365020e467b"
+    },
+    {
+      "file": "includes/class-encoding.php",
+      "status": "unchanged",
+      "sha256": "87028f3adbdfabfdc89c13338cc7e76885b28dc0988c3d33d3149b5fbb378a01",
+      "baseline_sha256": "87028f3adbdfabfdc89c13338cc7e76885b28dc0988c3d33d3149b5fbb378a01"
+    },
+    {
+      "file": "includes/class-manifest-store.php",
+      "status": "unchanged",
+      "sha256": "4d8d96d8a0f69a3f6c8f7e141f5b11a72b0df2972730d7a7aa63903a2a9dd7d4",
+      "baseline_sha256": "4d8d96d8a0f69a3f6c8f7e141f5b11a72b0df2972730d7a7aa63903a2a9dd7d4"
+    },
+    {
+      "file": "includes/class-paths.php",
+      "status": "unchanged",
+      "sha256": "be998f8b2ddee391ff9ab85d910bf7a85be854ea4dbb2940b2ae98c6cba59084",
+      "baseline_sha256": "be998f8b2ddee391ff9ab85d910bf7a85be854ea4dbb2940b2ae98c6cba59084"
+    },
+    {
+      "file": "includes/class-plugin.php",
+      "status": "modified",
+      "sha256": "1f1f9c5dd50f4e9db55c463cb1e0642e65330ffc43843765965523bbca39d0ea",
+      "baseline_sha256": "931e961a8a412bef40054d4c503e6db94418a1b218fcdf1a87ca89416f948c0d"
+    },
+    {
+      "file": "includes/class-processor.php",
+      "status": "unchanged",
+      "sha256": "e308e1b275560deaf4836ca3c01dfcf063c57de8bf47cb9df541798bf3278b28",
+      "baseline_sha256": "e308e1b275560deaf4836ca3c01dfcf063c57de8bf47cb9df541798bf3278b28"
+    },
+    {
+      "file": "includes/class-request-handler.php",
+      "status": "unchanged",
+      "sha256": "d1faaa21e4e0e840689a0de350920c6cabf2116069149d443440a468631347ce",
+      "baseline_sha256": "d1faaa21e4e0e840689a0de350920c6cabf2116069149d443440a468631347ce"
+    },
+    {
+      "file": "includes/class-resolver.php",
+      "status": "unchanged",
+      "sha256": "19443e05e2a05326c7484ae3f9bfc77cf5a821ee07d00baf364a4978bdc5bf3b",
+      "baseline_sha256": "19443e05e2a05326c7484ae3f9bfc77cf5a821ee07d00baf364a4978bdc5bf3b"
+    },
+    {
+      "file": "includes/class-responsive.php",
+      "status": "unchanged",
+      "sha256": "9f23fe1b3c034b2b299c35e62cfada1e1fdbba2f153d9b5d1fe733f4bc22efb0",
+      "baseline_sha256": "9f23fe1b3c034b2b299c35e62cfada1e1fdbba2f153d9b5d1fe733f4bc22efb0"
+    },
+    {
+      "file": "includes/class-settings.php",
+      "status": "modified",
+      "sha256": "93e8ec88451d2a99d12bd8adfb83bc2efbe8e820d868bbb408b6301b76a995d9",
+      "baseline_sha256": "c0e7b5fb0f6852a66a6892ff2ddae75f90523d7b9f66253706cc1c99fd93a709"
+    },
+    {
+      "file": "includes/class-upload-optimizer.php",
+      "status": "added",
+      "sha256": "8d6c8e5f172097c690496ed1fd852ca54861a536ea625df3cf5352d6e86ad41c",
+      "baseline_sha256": null
+    },
+    {
+      "file": "includes/class-variant.php",
+      "status": "unchanged",
+      "sha256": "93728603ff27ffe48569be17ff25406ef02d8d6b84930b8be9c82399f5785729",
+      "baseline_sha256": "93728603ff27ffe48569be17ff25406ef02d8d6b84930b8be9c82399f5785729"
+    },
+    {
+      "file": "mediaflow.php",
+      "status": "modified",
+      "sha256": "cb71bb0c8c92b5ebcbebd55d78613f3f2e786a3412144b494dfc66b79ff55846",
+      "baseline_sha256": "20a136ead9b489db92bbe8fc49794d71461e0d15ff4dba8266ab1e06f8365192"
+    },
+    {
+      "file": "readme.txt",
+      "status": "modified",
+      "sha256": "834c17e9498e5ca607cbe00c8c7afcdc9085d04c93fad2b22f1afdd847203e4d",
+      "baseline_sha256": "8f1ba48313490af347622065a2b51eed4cff402a79625f6ebae3336acdbe8a09"
+    },
+    {
+      "file": "tests/adaptive-placeholder.php",
+      "status": "unchanged",
+      "sha256": "fe19b47984440d581e26a999ed9e0308abeca38cbd1dffde8eb7d2e3337592ee",
+      "baseline_sha256": "fe19b47984440d581e26a999ed9e0308abeca38cbd1dffde8eb7d2e3337592ee"
+    },
+    {
+      "file": "tests/check_source.py",
+      "status": "modified",
+      "sha256": "7ba9228fc0bfe519009771da8b819f3507b474707957458beaf04ca283a6dfd2",
+      "baseline_sha256": "bdd97287fc0528f1e974dc9b1d457566041edd41b7c7f250d98a2f5f2db92bc9"
+    },
+    {
+      "file": "tests/context-reentry.php",
+      "status": "modified",
+      "sha256": "a4bfed05fc2f1085b78177ea1d72fe72e9fd049a318348e1c699287966380b99",
+      "baseline_sha256": "96b74cd668b52fd3de3efca32c6e79450e8bc37ee7586b18579fcf03da213f3a"
+    },
+    {
+      "file": "tests/encoding-headers.php",
+      "status": "unchanged",
+      "sha256": "74dc3a5cf4f89cb82f3e87e5fa9b9ca54fe4707fb375c2ef9f86ddeb5e53f140",
+      "baseline_sha256": "74dc3a5cf4f89cb82f3e87e5fa9b9ca54fe4707fb375c2ef9f86ddeb5e53f140"
+    },
+    {
+      "file": "tests/fixtures/adam7.png",
+      "status": "unchanged",
+      "sha256": "95465e7740a539cfef8e91571f118b5a0420c8195f2975e2ba15ae8937da4a0c",
+      "baseline_sha256": "95465e7740a539cfef8e91571f118b5a0420c8195f2975e2ba15ae8937da4a0c"
+    },
+    {
+      "file": "tests/fixtures/baseline.jpg",
+      "status": "unchanged",
+      "sha256": "b16b0672f9bffdf5a7dd8369fff61d9d465ae82767a73799f9562b93d4fe6d3b",
+      "baseline_sha256": "b16b0672f9bffdf5a7dd8369fff61d9d465ae82767a73799f9562b93d4fe6d3b"
+    },
+    {
+      "file": "tests/fixtures/encoding-source.png",
+      "status": "unchanged",
+      "sha256": "85c8ace69a5196a70e607f0caf9527dfc4a016d0891fc179559d607aa6333b45",
+      "baseline_sha256": "85c8ace69a5196a70e607f0caf9527dfc4a016d0891fc179559d607aa6333b45"
+    },
+    {
+      "file": "tests/fixtures/plain.png",
+      "status": "unchanged",
+      "sha256": "39e7a5580e9cf5b95005131acd6c712faa967204dfac5bd46be420090880f466",
+      "baseline_sha256": "39e7a5580e9cf5b95005131acd6c712faa967204dfac5bd46be420090880f466"
+    },
+    {
+      "file": "tests/fixtures/progressive.jpg",
+      "status": "unchanged",
+      "sha256": "5dd27069a19a85434d30e59a60e9de235fa323c33397cfbe552c65fa12aa1565",
+      "baseline_sha256": "5dd27069a19a85434d30e59a60e9de235fa323c33397cfbe552c65fa12aa1565"
+    },
+    {
+      "file": "tests/multisite-smoke.php",
+      "status": "unchanged",
+      "sha256": "e9780f3178abe051b4bdce42749d241701e862494f9c80e6b7e92150de825f00",
+      "baseline_sha256": "e9780f3178abe051b4bdce42749d241701e862494f9c80e6b7e92150de825f00"
+    },
+    {
+      "file": "tests/performance-hardening.php",
+      "status": "unchanged",
+      "sha256": "b926c20320efd88cb1f9a98c7ea9078fbbe124a8629f5eea05752d02faec484a",
+      "baseline_sha256": "b926c20320efd88cb1f9a98c7ea9078fbbe124a8629f5eea05752d02faec484a"
+    },
+    {
+      "file": "tests/routing-guard-smoke.php",
+      "status": "unchanged",
+      "sha256": "0a6f1037d4c9f6fa839d4ad6aca7e08bb1792b899d01a5b9f14de4b6027b346f",
+      "baseline_sha256": "0a6f1037d4c9f6fa839d4ad6aca7e08bb1792b899d01a5b9f14de4b6027b346f"
+    },
+    {
+      "file": "tests/upload-browser-contract.js",
+      "status": "added",
+      "sha256": "de7c064ddc80c8c9e0b3981fdc238e534188c3a9b9b205458e5470844a3537dc",
+      "baseline_sha256": null
+    },
+    {
+      "file": "tests/upload-pipeline.php",
+      "status": "added",
+      "sha256": "923301fb0c42e8983b621846b3c8ee68028c079c5d43d3662e2eaf17440555a3",
+      "baseline_sha256": null
+    },
+    {
+      "file": "uninstall.php",
+      "status": "unchanged",
+      "sha256": "0c7a835697bd8e2510c4a02ff64e05cdb499bc3f00580f7d4b3c4a536663954c",
+      "baseline_sha256": "0c7a835697bd8e2510c4a02ff64e05cdb499bc3f00580f7d4b3c4a536663954c"
+    }
+  ],
+  "summary": {
+    "added": 6,
+    "modified": 11,
+    "removed": 0,
+    "unchanged": 31
+  }
+}
