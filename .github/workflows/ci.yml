@@ -1,0 +1,50 @@
+name: QMediaFlow CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'chore/**'
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Runtime versions
+        run: |
+          php -v
+          python3 --version
+          node --version
+
+      - name: Source contracts and PHP syntax
+        run: python3 tests/check_source.py
+
+      - name: Standalone PHP contracts
+        run: |
+          set -euo pipefail
+          for test in \
+            tests/adaptive-placeholder.php \
+            tests/context-reentry.php \
+            tests/encoding-headers.php \
+            tests/multisite-smoke.php \
+            tests/performance-hardening.php \
+            tests/routing-guard-smoke.php \
+            tests/upload-pipeline.php
+          do
+            echo "==> $test"
+            php "$test"
+          done
+
+      - name: Browser upload contract
+        run: node tests/upload-browser-contract.js
