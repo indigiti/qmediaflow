@@ -128,8 +128,8 @@ final class Runtime_Config {
 
     /**
      * The historical MediaFlow managed rewrite block remains untouched. This small
-     * additional block only adds the new focal-token shape, so legacy upgrades and
-     * rollbacks do not churn or replace administrator directives.
+     * additional block adds focal-token routing and denies direct HTTP access to the
+     * gateway's path-discovery config. Nginx deployments must mirror both rules.
      */
     public static function ensure_extended_route( string $cache_root ): bool {
         $htaccess = rtrim( $cache_root, '/\\' ) . '/.htaccess';
@@ -146,6 +146,15 @@ final class Runtime_Config {
         $front = '/' . implode( '/', $front_parts );
 
         $block = self::ROUTE_BEGIN . "\n"
+            . "<Files \"__qmediaflow-gateway-config.php\">\n"
+            . "  <IfModule mod_authz_core.c>\n"
+            . "    Require all denied\n"
+            . "  </IfModule>\n"
+            . "  <IfModule !mod_authz_core.c>\n"
+            . "    Order allow,deny\n"
+            . "    Deny from all\n"
+            . "  </IfModule>\n"
+            . "</Files>\n"
             . "<IfModule mod_rewrite.c>\n"
             . "  RewriteEngine On\n"
             . "  RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$\n"
