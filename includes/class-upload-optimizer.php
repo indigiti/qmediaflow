@@ -26,10 +26,7 @@ final class Upload_Optimizer {
         add_filter( 'wp_handle_sideload_prefilter', static fn( $file ) => Plugin::instance()->upload_optimizer()->validate_sideload( (array) $file ), 1000 );
     }
 
-    /**
-     * WordPress 7.1+ has a separate client-side media pipeline. MediaFlow owns
-     * the source transform when enabled, so running both would encode twice.
-     */
+    /** WordPress 7.1+ client processing is disabled when QMediaFlow owns the transform. */
     public function disable_core_client_processing( bool $enabled ): bool {
         return $this->settings->upload_optimizer_enabled() ? false : $enabled;
     }
@@ -54,12 +51,13 @@ final class Upload_Optimizer {
             'maxSourceBytes' => $this->settings->upload_max_source_bytes(),
             'targetBytes'    => self::TARGET_BYTES,
             'hardBytes'      => self::HARD_BYTES,
+            'maxWorkers'     => class_exists( Runtime_Config::class ) ? Runtime_Config::upload_workers() : 2,
             'supportedTypes' => array( 'image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif' ),
             'messages'       => array(
-                'unsupported' => 'MediaFlow accepts JPEG, PNG, WebP, AVIF, HEIC or HEIF source images when the browser can decode them.',
-                'tooLarge'    => 'The original image exceeds the MediaFlow browser-processing size limit.',
-                'processing'  => 'MediaFlow could not optimize this image in the browser.',
-                'finalSize'   => 'MediaFlow could not reduce this image below the 500 KB upload ceiling.',
+                'unsupported' => 'QMediaFlow accepts JPEG, PNG, WebP, AVIF, HEIC or HEIF source images when the browser can decode them.',
+                'tooLarge'    => 'The original image exceeds the QMediaFlow browser-processing size limit.',
+                'processing'  => 'QMediaFlow could not optimize this image in the browser.',
+                'finalSize'   => 'QMediaFlow could not reduce this image below the 500 KB upload ceiling.',
             ),
         );
 
@@ -74,9 +72,6 @@ final class Upload_Optimizer {
         if ( ! $this->settings->upload_optimizer_enabled() ) {
             return $file;
         }
-
-        // Classic browser uploads use wp_handle_upload(). Enforce the final
-        // source contract for image uploads even if JavaScript failed to run.
         if ( $this->looks_like_image( $file ) ) {
             return $this->validate_final_file( $file );
         }
@@ -87,9 +82,6 @@ final class Upload_Optimizer {
         if ( ! $this->settings->upload_optimizer_enabled() ) {
             return $file;
         }
-
-        // REST media uploads use the sideload path. Limit this validation to
-        // browser requests marked by MediaFlow so remote imports remain intact.
         $marker = isset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ) : '';
         if ( '1' !== $marker || ! $this->looks_like_image( $file ) ) {
             return $file;
@@ -112,7 +104,7 @@ final class Upload_Optimizer {
         }
 
         if ( 'image/webp' !== $mime ) {
-            $file['error'] = 'MediaFlow upload rejected: optimized images must arrive as WebP.';
+            $file['error'] = 'QMediaFlow upload rejected: optimized images must arrive as WebP.';
             return $file;
         }
 
@@ -121,7 +113,7 @@ final class Upload_Optimizer {
             $size = (int) filesize( $tmp );
         }
         if ( $size <= 0 || $size > self::HARD_BYTES ) {
-            $file['error'] = 'MediaFlow upload rejected: the final WebP must be 500 KB or smaller.';
+            $file['error'] = 'QMediaFlow upload rejected: the final WebP must be 500 KB or smaller.';
             return $file;
         }
 
