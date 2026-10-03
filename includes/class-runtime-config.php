@@ -113,7 +113,7 @@ final class Runtime_Config {
         $front = self::front_controller_path();
         $config = array(
             'version'           => 4,
-            'routing_schema'    => defined( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION' ) ? (string) QMEDIAFLOW_ROUTING_SCHEMA_VERSION : '5',
+            'routing_schema'    => defined( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION' ) ? (string) QMEDIAFLOW_ROUTING_SCHEMA_VERSION : '6',
             'front_controller'  => $front,
             'cache_root'        => $cache_root,
             'private_root'      => $private_root,
