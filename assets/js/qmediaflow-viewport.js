@@ -6,6 +6,7 @@
     const revealMs = Math.max(0, Math.min(1500, Number(config.revealMs || 180)));
     const rootMargin = typeof config.rootMargin === 'string' && config.rootMargin ? config.rootMargin : '250px 0px';
     let observer = null;
+    let started = false;
 
     function finish(img) {
         if (!img || img.dataset.qmediaflowState === 'loaded') return;
@@ -18,18 +19,20 @@
         }
     }
 
-    function revealWhenDecoded(img) {
-        if (typeof img.decode === 'function') {
-            img.decode().then(function () { finish(img); }, function () {
-                if (img.complete) finish(img);
-            });
-            return;
-        }
+    function finishOnLoad(img) {
         if (img.complete) {
             finish(img);
             return;
         }
         img.addEventListener('load', function () { finish(img); }, { once: true });
+    }
+
+    function revealWhenDecoded(img) {
+        if (typeof img.decode === 'function') {
+            img.decode().then(function () { finish(img); }, function () { finishOnLoad(img); });
+            return;
+        }
+        finishOnLoad(img);
     }
 
     function activate(img) {
@@ -79,6 +82,8 @@
     }
 
     function start() {
+        if (started) return;
+        started = true;
         if ('IntersectionObserver' in window) {
             observer = new IntersectionObserver(function (entries) {
                 entries.forEach(function (entry) {
@@ -103,9 +108,9 @@
         }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start, { once: true });
-    } else {
+    if (document.body) {
         start();
+    } else {
+        document.addEventListener('DOMContentLoaded', start, { once: true });
     }
 })();
