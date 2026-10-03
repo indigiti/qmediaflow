@@ -18,9 +18,7 @@ final class Picture {
     }
 
     public function hooks(): void {
-        if ( Runtime_Config::dual_format_enabled() ) {
-            add_filter( 'wp_get_attachment_image', array( $this, 'filter_attachment_html' ), 90, 5 );
-        }
+        if ( Runtime_Config::dual_format_enabled() ) { add_filter( 'wp_get_attachment_image', array( $this, 'filter_attachment_html' ), 90, 5 ); }
     }
 
     public function filter_attachment_html( string $html, int $attachment_id, $size, bool $icon, array $attr ): string {
@@ -54,7 +52,7 @@ final class Picture {
 
         $focal_x = 50;
         $focal_y = 50;
-        if ( $variant->crop ) { [ $focal_x, $focal_y ] = Focal_Point::get( $attachment_id ); }
+        if ( $variant->crop ) { [ $focal_x, $focal_y ] = Focal_Point::runtime( $attachment_id ); }
         $needs_focal = $variant->crop && ( 50 !== $focal_x || 50 !== $focal_y );
 
         $sources = array();
