@@ -57,8 +57,13 @@ final class Viewport_Loader {
             'qmediaflow-viewport',
             'window.QMediaFlowViewport=' . wp_json_encode(
                 array(
-                    'rootMargin' => self::viewport_margin() . 'px 0px',
-                    'revealMs'   => self::reveal_ms(),
+                    'rootMargin'        => self::viewport_margin() . 'px 0px',
+                    'fastMargin'        => self::fast_margin(),
+                    'slowMargin'        => self::slow_margin(),
+                    'saveDataMargin'    => self::save_data_margin(),
+                    'velocityLookahead' => self::velocity_lookahead(),
+                    'adaptive'          => self::adaptive(),
+                    'revealMs'          => self::reveal_ms(),
                 ),
                 JSON_UNESCAPED_SLASHES
             ) . ';',
@@ -176,9 +181,33 @@ final class Viewport_Loader {
         return ! defined( 'QMEDIAFLOW_VIEWPORT_LOADING' ) || (bool) QMEDIAFLOW_VIEWPORT_LOADING;
     }
 
+    private static function adaptive(): bool {
+        return ! defined( 'QMEDIAFLOW_VIEWPORT_ADAPTIVE' ) || (bool) QMEDIAFLOW_VIEWPORT_ADAPTIVE;
+    }
+
     private static function viewport_margin(): int {
         $value = defined( 'QMEDIAFLOW_VIEWPORT_MARGIN' ) ? (int) QMEDIAFLOW_VIEWPORT_MARGIN : 250;
         return max( 0, min( 2000, $value ) );
+    }
+
+    private static function fast_margin(): int {
+        $value = defined( 'QMEDIAFLOW_VIEWPORT_FAST_MARGIN' ) ? (int) QMEDIAFLOW_VIEWPORT_FAST_MARGIN : 400;
+        return max( self::viewport_margin(), min( 2000, $value ) );
+    }
+
+    private static function slow_margin(): int {
+        $value = defined( 'QMEDIAFLOW_VIEWPORT_SLOW_MARGIN' ) ? (int) QMEDIAFLOW_VIEWPORT_SLOW_MARGIN : 100;
+        return max( 0, min( self::viewport_margin(), $value ) );
+    }
+
+    private static function save_data_margin(): int {
+        $value = defined( 'QMEDIAFLOW_VIEWPORT_SAVE_DATA_MARGIN' ) ? (int) QMEDIAFLOW_VIEWPORT_SAVE_DATA_MARGIN : 60;
+        return max( 0, min( self::slow_margin(), $value ) );
+    }
+
+    private static function velocity_lookahead(): int {
+        $value = defined( 'QMEDIAFLOW_VIEWPORT_VELOCITY_LOOKAHEAD' ) ? (int) QMEDIAFLOW_VIEWPORT_VELOCITY_LOOKAHEAD : 900;
+        return max( 0, min( 2500, $value ) );
     }
 
     private static function reveal_ms(): int {

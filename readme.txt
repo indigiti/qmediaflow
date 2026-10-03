@@ -3,59 +3,78 @@ Contributors: indigiti
 Tags: images, performance, responsive-images, webp, avif, lqip
 Requires at least: 6.5
 Requires PHP: 8.1
-Stable tag: 0.2.9
+Stable tag: 0.3.0
 License: GPLv2 or later
 
-Browser-first WordPress image optimization with adaptive on-demand responsive delivery and a disposable static cache.
+Browser-first WordPress image optimization with static warm delivery, standalone cold generation, adaptive viewport loading and bounded cache intelligence.
 
 == Description ==
 
-QMediaFlow keeps WordPress source attachments under normal Media Library management, optimizes supported browser uploads before they reach PHP, and creates responsive delivery variants only when requested.
+QMediaFlow keeps source attachments under normal WordPress Media Library management while generating disposable, revisioned responsive derivatives outside the uploads tree.
 
-The warm delivery path is intentionally static: existing generated variants are served directly by the web server without bootstrapping WordPress, querying QMediaFlow settings, or resizing an image. Cold misses use signed transforms, sharded filesystem manifests, non-blocking generation locks and atomic publication.
+The warm path is intentionally static: an existing generated derivative is served by the web server/CDN without bootstrapping WordPress, querying the database, or invoking an encoder. Missing signed derivatives use the WordPress-free `qmediaflow-edge.php`/`qmediaflow-gateway.php` cold path with non-blocking generation admission and atomic publication.
 
-QMediaFlow includes browser-side WebP source optimization, adaptive responsive widths, Auto LQIP, Safe/Adaptive/Strict WordPress thumbnail modes, O(1) logical cache namespace rotation, multisite isolation, bounded stale-cache maintenance and server encoder checks.
+v0.3.0 includes browser-side upload optimization, responsive WebP/AVIF delivery, Auto LQIP, adaptive viewport activation, critical and predictive warming, a de-duplicated derivative queue, CDN/S3-compatible distribution, telemetry, health diagnostics, focal crops, WooCommerce support, headless REST integration, reversible thumbnail migration and bounded upload-time image intelligence.
+
+== Progressive viewport delivery ==
+
+Below-the-fold images that WordPress already marks `loading="lazy"` retain the QMediaFlow placeholder until they approach the viewport. High-priority/hero images are not deferred. The shared observer adapts its preload margin to browser network hints and Save-Data, and adds bounded lookahead during fast scrolling.
+
+== Image intelligence ==
+
+Upload-time analysis downsamples an image to at most 96×96 and derives deterministic visual statistics used for classification, saliency focal suggestions and content-aware quality hints. It is not face recognition and does not use a remote AI service.
+
+== Predictive warming ==
+
+QMediaFlow can sample public page traffic and maintain only a decaying post heat score. It does not store IP addresses, cookies, user IDs, user agents or referrers. Hot content reuses the existing bounded warmer and de-duplicated derivative queue.
+
+== Production validation ==
+
+Use:
+
+`wp qmediaflow validate production --deep`
+
+and the repository's `tools/qmediaflow-load-test.py` against the actual staging/production web server. Automated repository tests cannot establish real hosting capacity, CDN hit ratio or S3 latency.
 
 == Compatibility ==
 
-QMediaFlow v0.2.9 is the canonical product identity. Existing MediaFlow integrations remain supported: legacy `mediaflow_*` helpers, `MEDIAFLOW_*` constants, action/filter names, runtime storage paths and the `wp mediaflow` command are retained for backward compatibility. New integrations should prefer `qmediaflow_url()`, `qmediaflow_image()` and `QMEDIAFLOW_*` configuration constants.
+QMediaFlow is the canonical product identity. Existing MediaFlow-era helpers, `MEDIAFLOW_*` constants, namespace symbols, hooks, runtime paths and CLI aliases remain supported where renaming would create migration/cache risk.
 
 == Important ==
 
-This remains a staging/development build. Test theme, plugin, editor, browser and web-server compatibility before reducing normal WordPress physical image sizes on an established site.
-
-If the default private directory is web-accessible on Nginx, deny `/.mediaflow-private/` or define `QMEDIAFLOW_PRIVATE_DIR` (the legacy `MEDIAFLOW_PRIVATE_DIR` name remains supported) outside the document root.
+Validate theme/plugin/editor behavior and real web-server/CDN/object-store routing on staging before production rollout. If the default private directory is web-accessible under Nginx, deny access to `/.mediaflow-private/` or define `QMEDIAFLOW_PRIVATE_DIR` outside the document root.
 
 == Changelog ==
+
+= 0.3.0 =
+* Add WordPress-free cold derivative routing through `qmediaflow-edge.php` and `qmediaflow-gateway.php`, with bounded non-blocking generation and immutable static publication.
+* Add critical warming, de-duplicated priority derivative queue, telemetry, health diagnostics and adaptive generator concurrency.
+* Add CDN rewriting, S3-compatible distribution, standalone-gateway distribution bridging and bounded AVIF/WebP picture delivery.
+* Add content-aware encoding, WooCommerce integration, focal crops, headless REST API and reversible thumbnail migration tooling.
+* Add viewport-aware progressive delivery with network/Save-Data adaptive margins, scroll-velocity lookahead, decode-aware reveal and no-JavaScript fallback.
+* Add release hardening for WordPress array crop definitions, focal runtime backfill and REST visibility.
+* Add bounded 96×96 upload-time image intelligence for visual classification, saliency focal suggestions and quality hints.
+* Add privacy-safe predictive cache warming using decaying post heat scores without visitor identifiers.
+* Add `wp qmediaflow validate production` and a dependency-free concurrent HTTP load validator for real staging/production testing.
 
 = 0.2.9 =
 * Rebrand the public product and plugin metadata to QMediaFlow.
 * Add canonical `QMEDIAFLOW_*` configuration constants while retaining `MEDIAFLOW_*` aliases.
 * Add canonical `qmediaflow_url()` and `qmediaflow_image()` helpers while retaining legacy API aliases.
 * Document the compatibility boundary so existing sites can upgrade without cache, hook or integration breakage.
-* Add a performance roadmap focused on direct cold-miss serving, asynchronous warming, object storage/CDN adapters, observability and adaptive encoding policy.
 
 = 0.2.8 =
 * Add browser-first image upload optimization with orientation normalization, dimension limits and Web Worker WebP encoding.
-* Binary-search the highest quality under a 480 KB target; reduce dimensions by 10% and retry when needed.
-* Enforce a final WebP ceiling of 500 KB without server-side recompression.
-* Add configurable 2560×2560 upload dimensions and 25 MB original browser-processing limit.
-* Avoid double processing with WordPress 7.1+ client-side media while QMediaFlow owns the upload transform.
+* Binary-search the highest quality under a 480 KB target and enforce a 500 KB final ceiling.
 
 = 0.2.7 =
-* Add Auto LQIP: deterministic gradient first, then a revisioned static LQIP generated by a bounded background queue.
-* Keep missing Auto-LQIPs out of WordPress/PHP on Apache/LiteSpeed by serving a transparent no-store static pending fallback.
-* Add queue deduplication, retry state, one-image WP-Cron worker runs and a bounded generation lock pool.
-* Make full Media Library LQIP rebuild optional; retain pre-warm controls and WP-CLI for administrators who want previews ready in advance.
+* Add Auto LQIP with a deterministic gradient, bounded background generation and immutable revisioned previews.
 
 = 0.2.6.1 =
-* Decode each source only once during adaptive LQIP fallback generation.
-* Add a request-global total inline LQIP byte budget (24 KB default).
-* Memoize successful path/guard setup and separate routing schema migrations from plugin version updates.
-* Time-bound wp-admin rebuild requests and reduce default batch sizes.
+* Harden LQIP performance, filesystem setup and bounded admin/CLI rebuilds.
 
 = 0.2.0 =
-* Scale-hardening release with sharding, anti-stampede generation, private runtime storage, O(1) namespace rotation, bounded responsive candidates and compatibility modes.
+* Scale-hardening release with sharding, anti-stampede generation, private runtime storage, O(1) namespace rotation and bounded responsive candidates.
 
 = 0.1.0 =
 * Initial prototype.

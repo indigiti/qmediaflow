@@ -146,6 +146,6 @@ final class Smart_Delivery {
         if ( null === $this->registered_sizes ) { $this->registered_sizes = wp_get_registered_image_subsizes(); }
         if ( empty( $this->registered_sizes[ $size ] ) ) { return false; }
         $crop = $this->registered_sizes[ $size ]['crop'] ?? false;
-        return ! is_array( $crop ) && ! empty( $crop );
+        return ! empty( $crop );
     }
 }

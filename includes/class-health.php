@@ -22,7 +22,9 @@ final class Health {
         $htaccess = rtrim( $cache_root, '/\\' ) . '/.htaccess';
         $rules = is_readable( $htaccess ) ? (string) @file_get_contents( $htaccess ) : '';
         $gateway = QMEDIAFLOW_DIR . 'qmediaflow-gateway.php';
+        $edge = QMEDIAFLOW_DIR . 'qmediaflow-edge.php';
         $config = rtrim( $cache_root, '/\\' ) . '/__qmediaflow-gateway-config.php';
+        $edge_routed = str_contains( $rules, 'qmediaflow-edge.php' );
 
         $webp = wp_image_editor_supports( array( 'mime_type' => 'image/webp' ) );
         $avif = wp_image_editor_supports( array( 'mime_type' => 'image/avif' ) );
@@ -45,12 +47,14 @@ final class Health {
             ),
             'routing' => array(
                 'gateway_file'      => is_readable( $gateway ),
+                'edge_wrapper_file' => is_readable( $edge ),
                 'gateway_config'    => is_readable( $config ),
-                'legacy_cold_route' => str_contains( $rules, 'w[0-9]+-h[0-9]+-c[01]-q[0-9]+-s' ) && str_contains( $rules, 'qmediaflow-gateway.php' ),
-                'focal_cold_route'  => str_contains( $rules, '-fx[0-9]{1,3}-fy[0-9]{1,3}-s' ),
+                'legacy_cold_route' => str_contains( $rules, 'w[0-9]+-h[0-9]+-c[01]-q[0-9]+-s' ) && $edge_routed,
+                'focal_cold_route'  => str_contains( $rules, '-fx[0-9]{1,3}-fy[0-9]{1,3}-s' ) && $edge_routed,
+                'edge_routed'       => $edge_routed,
                 'immutable_headers' => str_contains( $rules, 'max-age=31536000, immutable' ),
                 'pending_no_store'  => str_contains( $rules, 'no-store, max-age=0' ),
-                'nginx_note'        => 'Nginx must mirror the documented /image-cache static-hit and gateway fallback rules.',
+                'nginx_note'        => 'Nginx must mirror the documented /image-cache static-hit rules and send cold signed derivatives to qmediaflow-edge.php.',
             ),
             'encoders' => array( 'webp' => $webp, 'avif' => $avif, 'benchmark' => $encoder ),
             'workers' => array(
@@ -62,12 +66,15 @@ final class Health {
                 'queue'                  => $this->queue->status( 5000 ),
             ),
             'features' => array(
-                'critical_warming'      => Runtime_Config::warm_enabled(),
-                'content_aware_encoding'=> Runtime_Config::content_aware_enabled(),
-                'dual_format'           => Runtime_Config::dual_format_enabled(),
-                'telemetry'             => Runtime_Config::telemetry_enabled(),
-                'cdn'                   => '' !== Runtime_Config::cdn_base_url(),
-                'object_store'          => Runtime_Config::object_store_enabled(),
+                'critical_warming'       => Runtime_Config::warm_enabled(),
+                'content_aware_encoding' => Runtime_Config::content_aware_enabled(),
+                'image_intelligence'     => Runtime_Config::image_intelligence_enabled(),
+                'auto_focal'             => Runtime_Config::auto_focal_enabled(),
+                'predictive_warming'     => Runtime_Config::predictive_warming_enabled(),
+                'dual_format'            => Runtime_Config::dual_format_enabled(),
+                'telemetry'              => Runtime_Config::telemetry_enabled(),
+                'cdn'                    => '' !== Runtime_Config::cdn_base_url(),
+                'object_store'           => Runtime_Config::object_store_enabled(),
             ),
             'distribution' => $distribution,
         );

@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Runtime versions
         run: |
@@ -41,6 +41,7 @@ jobs:
             tests/encoding-headers.php \
             tests/multisite-smoke.php \
             tests/performance-hardening.php \
+            tests/release-intelligence-contract.php \
             tests/routing-guard-smoke.php \
             tests/upload-pipeline.php
           do
@@ -52,3 +53,6 @@ jobs:
         run: |
           node tests/upload-browser-contract.js
           node tests/viewport-contract.js
+
+      - name: Production load tool contract
+        run: python3 tools/qmediaflow-load-test.py --help >/dev/null

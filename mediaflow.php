@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /* Compatibility identifiers remain supported so existing sites do not break. */
 define( 'QMEDIAFLOW_VERSION', '0.3.0' );
-define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '5' );
+define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '6' );
 define( 'QMEDIAFLOW_FILE', __FILE__ );
 define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
 define( 'QMEDIAFLOW_URL', plugin_dir_url( __FILE__ ) );
@@ -25,8 +25,8 @@ if ( ! defined( 'MEDIAFLOW_FILE' ) ) { define( 'MEDIAFLOW_FILE', QMEDIAFLOW_FILE
 if ( ! defined( 'MEDIAFLOW_DIR' ) ) { define( 'MEDIAFLOW_DIR', QMEDIAFLOW_DIR ); }
 if ( ! defined( 'MEDIAFLOW_URL' ) ) { define( 'MEDIAFLOW_URL', QMEDIAFLOW_URL ); }
 
-$gateway_path = (string) parse_url( QMEDIAFLOW_URL . 'qmediaflow-gateway.php', PHP_URL_PATH );
-if ( '' === $gateway_path ) { $gateway_path = '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php'; }
+$gateway_path = (string) parse_url( QMEDIAFLOW_URL . 'qmediaflow-edge.php', PHP_URL_PATH );
+if ( '' === $gateway_path ) { $gateway_path = '/wp-content/plugins/qmediaflow/qmediaflow-edge.php'; }
 if ( ! defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ) { define( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH', $gateway_path ); }
 if ( ! defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ) { define( 'MEDIAFLOW_FRONT_CONTROLLER_PATH', QMEDIAFLOW_FRONT_CONTROLLER_PATH ); }
 
@@ -73,7 +73,11 @@ require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-features.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-release-hardening.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-image-intelligence.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-predictive-cache.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-viewport-loader.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-production-validator.php';
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
@@ -82,7 +86,11 @@ add_action( 'plugins_loaded', static function (): void {
     MediaFlow\Branding::register();
     if ( MediaFlow\Plugin::network_enabled() ) {
         MediaFlow\Features::boot();
+        MediaFlow\Release_Hardening::boot();
+        MediaFlow\Image_Intelligence::boot();
+        MediaFlow\Predictive_Cache::boot();
         MediaFlow\Viewport_Loader::boot();
+        MediaFlow\Production_Validator::boot();
     }
 }, 1 );
 
