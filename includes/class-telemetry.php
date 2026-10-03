@@ -66,7 +66,7 @@ final class Telemetry {
         if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) { return false; }
         $lock = @fopen( $dir . '/telemetry.lock', 'c' );
         if ( ! is_resource( $lock ) ) { return false; }
-        $mode = LOCK_EX | ( $blocking ? 0 : LOCK_NB );
+        $mode = $blocking ? LOCK_EX : ( LOCK_EX | LOCK_NB );
         if ( ! @flock( $lock, $mode ) ) { @fclose( $lock ); return false; }
 
         try {
