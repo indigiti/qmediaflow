@@ -1,103 +1,164 @@
-> Historical v0.2 architecture. See RELEASE-0.2.1.md for current limits, crop preservation, global admission controls and single-site restriction.
+# QMediaFlow Architecture — v0.3.0
 
-# MediaFlow Architecture — v0.2 scale hardening
+## Core invariant
 
-## Core rule
+WordPress owns source attachments. QMediaFlow owns disposable generated derivatives and private runtime state.
 
-WordPress owns the source attachment. MediaFlow owns disposable generated derivatives.
-
-- Source: normal WordPress attachment file.
-- Public derivative cache: `wp-content/image-cache/`.
-- Private runtime/control files: `.mediaflow-private/` or `MEDIAFLOW_PRIVATE_DIR`.
-- No variant lookup database table.
-- No recursive cache enumeration in normal wp-admin requests.
-
-## Control plane vs data plane
+The most important invariant is the warm path:
 
 ```text
-CONTROL PLANE                         DATA PLANE
-WordPress admin / upload              image delivery
-DB allowed                            cache hit: static file only
-settings / migration / recovery       cache miss: manifest + processor
+GET immutable derivative
+  -> web server / CDN serves existing file
+  -> 0 WordPress bootstrap
+  -> 0 QMediaFlow PHP execution
+  -> 0 database queries
+  -> 0 image encodes
 ```
 
-## Hot path
+Everything that can be moved away from that path is control-plane or background work.
+
+## Processing planes
 
 ```text
-GET /wp-content/image-cache/12/34/123456/vXXXX/revision/variant.webp
-
-file exists
-  -> Nginx/Apache/LiteSpeed static response
-  -> no WordPress bootstrap
-  -> no MediaFlow PHP
-  -> no MediaFlow DB lookup
-  -> no resize
+CONTROL / PREPARATION                     DELIVERY
+WordPress upload/admin                    CDN / web server
+browser source optimization               static derivative hit
+manifest + focal metadata                 standalone cold edge on miss
+image intelligence                        no WordPress on cold edge
+queues / warming                          immutable static result
+telemetry / diagnostics
 ```
 
-## Cache miss and stampede protection
+## Storage layout
 
-The processor uses `LOCK_EX | LOCK_NB`.
+Typical single-site layout:
 
 ```text
-first miss  -> gets lock -> generate -> atomic publish
-other miss  -> cannot get lock -> no waiting -> no-store redirect to original
+wp-content/
+├── uploads/                         # WordPress-owned source attachments
+├── image-cache/                     # public disposable QMediaFlow derivatives
+│   ├── __qmediaflow-gateway-config.php
+│   └── 12/34/123456/<namespace>/<revision>/...
+└── .mediaflow-private/              # private runtime/control state
+    ├── settings.json
+    ├── secret.php
+    ├── manifests/12/34/123456.json
+    ├── focal/12/34/123456.txt
+    ├── intelligence/12/34/123456.json
+    ├── predictive/00/01/123.json
+    ├── derivative-queue/
+    ├── distribution-queue/
+    ├── metrics.json
+    └── gateway-metrics.json
 ```
 
-This intentionally trades one temporary unoptimized source response for PHP worker availability during bursts.
+The historical `.mediaflow-private/` identity is retained for upgrade compatibility. `QMEDIAFLOW_PRIVATE_DIR` can move private state outside document root.
 
-## Sharding
+## Warm request
+
+A warm request never reaches the plugin:
 
 ```text
-image-cache/12/34/123456/<namespace>/<revision>/...
-private/manifests/12/34/123456.json
+browser
+  -> CDN/origin
+  -> immutable file exists
+  -> Cache-Control: public, max-age=31536000, immutable
+  -> response
 ```
 
-Two decimal levels avoid huge flat directories. The complete attachment ID remains in the path, so sharding never changes identity.
+## Cold request
 
-## Cache namespace
+Routing schema 6 sends a missing signed derivative to the edge wrapper:
 
-The active namespace is stored in the filesystem runtime config. Logical purge rotates it in O(1); new HTML receives new URLs. Old signed namespaces remain valid so previously cached HTML can still lazily generate a candidate that had not yet been requested. Physical stale namespace deletion is a separate maintenance operation.
+```text
+missing derivative
+   |
+   v
+qmediaflow-edge.php
+   |  WordPress-free
+   |  reads safe gateway runtime config
+   |  registers optional distribution bridge
+   v
+qmediaflow-gateway.php
+   |  validate HMAC before source work
+   |  read filesystem manifest
+   |  enforce source/output limits
+   |  non-blocking global generator admission
+   |  non-blocking immutable-variant lock
+   |  encode
+   |  atomic rename/publish
+   `-> immutable response
+```
 
-## Source revision
+When another process owns the required generation slot/variant lock, the request does not wait for an encoder and the cold path uses the existing no-store fallback policy.
 
-Source revision is based on source identity, size, mtime, dimensions and small first/last byte samples. It deliberately does **not** include the MediaFlow plugin version, so routine plugin upgrades do not invalidate an entire archive.
+The edge wrapper does not contain S3 credentials. Gateway runtime config exposes only whether object-store mirroring is enabled. After a successfully published cold derivative it creates a de-duplicated sharded distribution job and touches one `distribution-pending` marker. The next WordPress request schedules the normal background distribution worker.
 
-## Runtime manifest
+## Identity and security
 
-A v4 manifest contains source path/URL, MIME, dimensions, source revision, placeholder mode/signature and Auto-LQIP state. The absolute source path allows the normal cache-miss path to avoid attachment DB resolution. Relative source identity remains available as a recovery/migration fallback.
+Derivative identity is revisioned and signed. Transform fields include attachment/source revision, namespace, width, height, crop, quality, format, and focal coordinates when relevant. Requests are constrained by source/output pixel budgets and strict transform parsing.
 
-## Responsive candidates
+There is no arbitrary remote image proxy and no request-controlled arbitrary filesystem source path.
 
-MediaFlow uses a bounded candidate set around the rendered target width and approximately 2x DPR territory. It does not emit every configured width for every image. Width descriptors are derived from `output_dimensions()` after source/crop constraints.
+## Manifests and zero-DB delivery state
 
-## Progressive placeholder modes
+Filesystem manifests provide source path, URL, dimensions, MIME, revision, placeholder data and delivery policy inputs without attachment database resolution on the standalone path.
 
-- `auto` — default for new installs. Stable gradient immediately; revisioned static LQIP learns through the background queue.
-- `gradient` — deterministic gradient only; no preview image.
-- `lqip` — inline data URI with request-global count/byte budgets.
-- `color` — solid color only.
-- `none` — disabled.
+Custom focal coordinates are mirrored from attachment post meta to private filesystem markers. Delivery uses those markers via `Focal_Point::runtime()` and therefore does not query focal post meta. Existing focal metadata can be backfilled in bounded CLI batches.
 
-Auto LQIP uses `<source-revision>/<lqip-settings-signature>.<ext>` beneath each attachment's `lqip/` directory. This identity allows long immutable caching once generated without serving a stale preview after source replacement or settings changes. On Apache/LiteSpeed, a missing Auto-LQIP is satisfied by the transparent static pending fallback; the normal signed-derivative cold route remains separate.
+Upload-time image intelligence is also private filesystem state. It is produced outside the warm path and can be read by encoding policy without a database lookup.
 
-## Security boundaries
+## Image intelligence
 
-Transform URL fields are strict/numeric and covered by HMAC: attachment ID, source revision, cache namespace, width, height, crop, quality and format. The signature is 32 hexadecimal characters (128-bit truncated SHA-256 HMAC).
+Analysis is bounded to a maximum 96×96 sample and computes deterministic visual statistics:
 
-Default processing ceilings:
+- luminance entropy;
+- edge density;
+- contrast;
+- colorfulness;
+- transparency ratio;
+- complexity;
+- a coarse saliency focal suggestion.
 
-- source: 24,000,000 pixels
-- output: 8,000,000 pixels
-- individual dimensions: 8192 px
+Those inputs classify an image as photo, graphic, text-heavy or transparent and produce advisory format/quality hints. This module is deliberately local/statistical; it is not face recognition or an external ML service.
 
-Remote source proxying is not implemented.
+## Responsive delivery and viewport activation
 
-## WordPress 7.1
+QMediaFlow bounds responsive candidate count instead of emitting every configured width.
 
-MediaFlow remains idempotent across `wp_generate_attachment_metadata` create/update passes. Registered physical sizes are controlled through `intermediate_image_sizes_advanced`; the plugin does not depend on server-side upload-time `WP_Image_Editor` hooks that the 7.1 client-side processing path can bypass.
+For images WordPress already marks lazy, the real `src/srcset` can be held until one shared `IntersectionObserver` sees the image near the viewport. The preload distance is adaptive to `navigator.connection`/Save-Data where available, and fast scrolling can activate a small number of near-future images with bounded lookahead. Hero/eager/high-priority images are not deferred.
 
-## v0.2.8 browser source-upload boundary
+This JavaScript behavior changes only when a browser starts fetching the immutable derivative; it does not change derivative identity or the static warm path.
 
-MediaFlow now has two deliberately separate processing planes. The **upload plane** runs before WordPress stores a browser-selected image: browser decode/orientation, bounded resize, Web Worker WebP encode, 480 KB quality target, dimension fallback, 500 KB hard validation. The **delivery plane** remains the existing manifest/resolver/static derivative architecture.
+## Queue model
 
-The PHP upload guard does not resize or recompress MediaFlow browser uploads. It validates that the resulting source is WebP and no larger than 500,000 bytes, then allows normal WordPress attachment handling to continue. Non-image attachments are untouched. REST/sideload validation is scoped to requests marked by the MediaFlow browser transport so server-side imports are not unexpectedly converted or rejected.
+Derivative and distribution queues are filesystem-backed and sharded. Required properties are:
+
+- immutable-identity de-duplication;
+- bounded batch/time budgets;
+- non-blocking locks;
+- retry/backoff;
+- priority for critical variants;
+- Action Scheduler when available, WP-Cron fallback otherwise.
+
+The Warmer selects only a bounded set of valuable variants.
+
+## Predictive cache intelligence
+
+Predictive warming stores a decaying post heat score, not user profiles. Sampling estimates traffic without writing on every request. No IP, cookie, user ID, user agent or referrer is stored.
+
+Once heat crosses the configured threshold and cooldown, the module calls the existing Warmer. It never invents an unbounded variant set and therefore inherits queue de-duplication and concurrency controls.
+
+## Telemetry
+
+Static hits execute no telemetry code. Dynamic WordPress and standalone-gateway metrics are buffered in memory and merged into filesystem JSON at shutdown with non-blocking locks. Admin/CLI snapshots may block briefly because they are explicit control-plane operations.
+
+Timing summaries expose average, maximum and histogram-derived p50/p95/p99 values.
+
+## Production validation boundary
+
+Repository CI validates syntax, source contracts, queue locking, browser behavior and tooling. Real production performance is environment-dependent and must be measured on the deployment stack.
+
+`wp qmediaflow validate production --deep` checks configuration/storage/routing/encoders/workers/distribution. `tools/qmediaflow-load-test.py` measures real HTTP concurrency, success rate, RPS and p50/p95/p99 against supplied staging/production URLs.
+
+See `docs/PRODUCTION-VALIDATION.md`.
