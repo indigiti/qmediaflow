@@ -29,12 +29,10 @@ final class Features {
         if ( $this->booted ) { return; }
         $this->reload_context();
 
-        // Plugin reloads core site-scoped services at priority 10. Rebuild this
-        // additive graph after it so multisite switches cannot leak site state.
         add_action( 'switch_blog', array( $this, 'reload_context' ), 20, 0 );
-
         add_action( 'transition_post_status', array( $this, 'transition_post_status' ), 20, 3 );
         add_action( 'save_post', array( $this, 'save_post' ), 50, 3 );
+        add_action( 'delete_attachment', array( $this, 'delete_attachment_runtime' ), 20, 1 );
         add_action( 'woocommerce_update_product', array( $this, 'warm_product' ), 40, 1 );
         add_action( 'woocommerce_new_product', array( $this, 'warm_product' ), 40, 1 );
         add_filter( 'mediaflow_preserved_physical_sizes', array( $this, 'preserve_woocommerce_sizes' ), 20, 3 );
@@ -43,9 +41,7 @@ final class Features {
         add_filter( 'image_downsize', array( $this, 'smart_downsize' ), 7, 3 );
         add_filter( 'wp_get_attachment_image_attributes', array( $this, 'smart_attributes' ), 90, 3 );
         add_filter( 'wp_content_img_tag', array( $this, 'smart_content_tag' ), 90, 3 );
-        if ( Runtime_Config::dual_format_enabled() ) {
-            add_filter( 'wp_get_attachment_image', array( $this, 'picture_html' ), 90, 5 );
-        }
+        if ( Runtime_Config::dual_format_enabled() ) { add_filter( 'wp_get_attachment_image', array( $this, 'picture_html' ), 90, 5 ); }
 
         add_filter( 'attachment_fields_to_edit', array( $this, 'focal_fields' ), 20, 2 );
         add_filter( 'attachment_fields_to_save', array( $this, 'focal_save' ), 20, 2 );
@@ -82,6 +78,7 @@ final class Features {
 
     public function transition_post_status( string $new, string $old, \WP_Post $post ): void { $this->warmer->on_transition( $new, $old, $post ); }
     public function save_post( int $id, \WP_Post $post, bool $update ): void { $this->warmer->on_save( $id, $post, $update ); }
+    public function delete_attachment_runtime( int $id ): void { Focal_Point::delete_runtime( $id ); }
     public function warm_product( int $id ): void { $this->woocommerce->warm_product( $id ); }
     public function preserve_woocommerce_sizes( array $sizes, int $id, string $mode ): array { return $this->woocommerce->preserve_sizes( $sizes, $id, $mode ); }
     public function woocommerce_warm_widths( array $widths ): array { return $this->woocommerce->warm_widths( $widths ); }
@@ -96,13 +93,8 @@ final class Features {
     public function register_rest_routes(): void { $this->rest->register_routes(); }
     public function queue_original( int $id ): void { $this->distribution->queue_original( $id ); }
 
-    public function process_queue( int $site_id = 0 ): void {
-        $this->with_site( $site_id, fn() => $this->queue->process() );
-    }
-
-    public function process_distribution( int $site_id = 0 ): void {
-        $this->with_site( $site_id, fn() => $this->distribution->process_queue( $site_id ) );
-    }
+    public function process_queue( int $site_id = 0 ): void { $this->with_site( $site_id, fn() => $this->queue->process() ); }
+    public function process_distribution( int $site_id = 0 ): void { $this->with_site( $site_id, fn() => $this->distribution->process_queue( $site_id ) ); }
 
     private function with_site( int $site_id, callable $callback ): void {
         $switched = false;
