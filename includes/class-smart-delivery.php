@@ -132,7 +132,7 @@ final class Smart_Delivery {
                     );
                     $smart = $needs_focal
                         ? Focal_Resolver::url( $attachment_id, $manifest, $spec, $focal[0], $focal[1] )
-                        : $this->resolver->custom_url( $attachment_id, $spec );
+                        : $this->resolver->custom_url( $attachment_id, $manifest, $spec );
                     if ( $smart ) { $url = (string) $smart; }
                 }
             }
@@ -146,6 +146,6 @@ final class Smart_Delivery {
         if ( null === $this->registered_sizes ) { $this->registered_sizes = wp_get_registered_image_subsizes(); }
         if ( empty( $this->registered_sizes[ $size ] ) ) { return false; }
         $crop = $this->registered_sizes[ $size ]['crop'] ?? false;
-        return ! is_array( $crop ) && ! empty( $crop );
+        return ! empty( $crop );
     }
 }
