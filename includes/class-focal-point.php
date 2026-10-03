@@ -44,6 +44,21 @@ final class Focal_Point {
         return self::$cache[ $key ] = array( 50, 50 );
     }
 
+    public static function delete_runtime( int $attachment_id ): void {
+        unset( self::$cache[ self::cache_key( $attachment_id ) ] );
+        $path = self::runtime_path( $attachment_id );
+        if ( ! $path || ! is_file( $path ) ) { return; }
+        @unlink( $path );
+        $root = Plugin::instance()->paths()->private_dir() . '/focal';
+        $two = dirname( $path );
+        $one = dirname( $two );
+        foreach ( array( $two, $one ) as $dir ) {
+            if ( $dir === $root || ! str_starts_with( wp_normalize_path( $dir ), rtrim( wp_normalize_path( $root ), '/' ) . '/' ) ) { continue; }
+            $items = @scandir( $dir );
+            if ( is_array( $items ) && count( $items ) <= 2 ) { @rmdir( $dir ); }
+        }
+    }
+
     public function fields( array $fields, \WP_Post $attachment ): array {
         if ( ! wp_attachment_is_image( $attachment->ID ) ) { return $fields; }
         [ $x, $y ] = self::get( (int) $attachment->ID );
