@@ -26,7 +26,9 @@ final class Production_Validator {
         self::check( $checks, 'cache_writable', ! empty( $health['storage']['cache_writable'] ), 'Public derivative cache must be writable.' );
         self::check( $checks, 'private_writable', ! empty( $health['storage']['private_writable'] ), 'Private runtime state must be writable.' );
         self::check( $checks, 'signing_key', ! empty( $health['storage']['signing_key'] ), 'Immutable URL signing key must be available.' );
-        self::check( $checks, 'gateway_file', ! empty( $health['routing']['gateway_file'] ), 'Standalone gateway must be readable.' );
+        self::check( $checks, 'gateway_file', ! empty( $health['routing']['gateway_file'] ), 'Standalone encoder gateway must be readable.' );
+        self::check( $checks, 'edge_wrapper_file', ! empty( $health['routing']['edge_wrapper_file'] ), 'Standalone edge wrapper must be readable.' );
+        self::check( $checks, 'edge_routed', ! empty( $health['routing']['edge_routed'] ), 'Cold derivative routes must enter through qmediaflow-edge.php.' );
         self::check( $checks, 'gateway_config', ! empty( $health['routing']['gateway_config'] ), 'Standalone gateway runtime config must be published.' );
         self::check( $checks, 'focal_route', ! empty( $health['routing']['focal_cold_route'] ), 'Focal cold-miss route must be installed.' );
         self::check( $checks, 'immutable_headers', ! empty( $health['routing']['immutable_headers'] ), 'Warm derivatives need immutable cache headers.' );
