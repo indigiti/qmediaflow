@@ -32,7 +32,7 @@ $assert( str_contains( $smart, 'return ! empty( $crop );' ), 'Array crop definit
 $assert( ! str_contains( $edge, 'wp-load.php' ) && ! str_contains( $edge, 'ABSPATH' ), 'Edge wrapper must remain WordPress-free.' );
 $assert( str_contains( $edge, "require __DIR__ . '/qmediaflow-gateway.php';" ), 'Edge wrapper must delegate encoding to the proven standalone gateway.' );
 $assert( str_contains( $edge, 'distribution-queue' ) && str_contains( $edge, 'distribution-pending' ), 'Gateway output must enter the sharded object distribution queue.' );
-$assert( str_contains( $edge, "@fopen( $job_path, 'x' )" ), 'Gateway distribution jobs must de-duplicate atomically.' );
+$assert( str_contains( $edge, "@fopen( \$job_path, 'x' )" ), 'Gateway distribution jobs must de-duplicate atomically.' );
 
 $assert( str_contains( $hardening, "rest_pre_dispatch" ) && str_contains( $hardening, 'is_post_publicly_viewable' ), 'REST image access must be visibility-gated.' );
 $assert( str_contains( $hardening, 'qmediaflow_rest_public_unattached' ) && str_contains( $hardening, ', false, $post' ), 'Unattached public REST exposure must be explicit opt-in.' );
