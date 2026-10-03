@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /* Compatibility identifiers remain supported so existing sites do not break. */
 define( 'QMEDIAFLOW_VERSION', '0.3.0' );
-define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '5' );
+define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '6' );
 define( 'QMEDIAFLOW_FILE', __FILE__ );
 define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
 define( 'QMEDIAFLOW_URL', plugin_dir_url( __FILE__ ) );
