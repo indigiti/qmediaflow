@@ -73,13 +73,17 @@ require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-features.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-viewport-loader.php';
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
 add_action( 'plugins_loaded', static function (): void {
     MediaFlow\Plugin::instance()->boot();
     MediaFlow\Branding::register();
-    if ( MediaFlow\Plugin::network_enabled() ) { MediaFlow\Features::boot(); }
+    if ( MediaFlow\Plugin::network_enabled() ) {
+        MediaFlow\Features::boot();
+        MediaFlow\Viewport_Loader::boot();
+    }
 }, 1 );
 
 /** Canonical public helper: return a QMediaFlow variant URL. */
