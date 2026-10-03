@@ -48,5 +48,7 @@ jobs:
             php "$test"
           done
 
-      - name: Browser upload contract
-        run: node tests/upload-browser-contract.js
+      - name: Browser contracts
+        run: |
+          node tests/upload-browser-contract.js
+          node tests/viewport-contract.js
