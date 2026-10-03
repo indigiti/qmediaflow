@@ -132,7 +132,7 @@ final class Smart_Delivery {
                     );
                     $smart = $needs_focal
                         ? Focal_Resolver::url( $attachment_id, $manifest, $spec, $focal[0], $focal[1] )
-                        : $this->resolver->custom_url( $attachment_id, $manifest, $spec );
+                        : $this->resolver->custom_url( $attachment_id, $spec );
                     if ( $smart ) { $url = (string) $smart; }
                 }
             }
