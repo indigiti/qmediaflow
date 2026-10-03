@@ -24,6 +24,12 @@ final class Runtime_Config {
     public static function telemetry_enabled(): bool { return self::enabled( 'QMEDIAFLOW_TELEMETRY', true ); }
     public static function warm_enabled(): bool { return self::enabled( 'QMEDIAFLOW_CRITICAL_WARMING', true ); }
     public static function max_warm_variants(): int { return self::integer( 'QMEDIAFLOW_MAX_WARM_VARIANTS', 4, 0, 16 ); }
+    public static function image_intelligence_enabled(): bool { return self::enabled( 'QMEDIAFLOW_IMAGE_INTELLIGENCE', true ); }
+    public static function auto_focal_enabled(): bool { return self::enabled( 'QMEDIAFLOW_AUTO_FOCAL', false ); }
+    public static function predictive_warming_enabled(): bool { return self::enabled( 'QMEDIAFLOW_PREDICTIVE_WARMING', true ); }
+    public static function predictive_sample_rate(): int { return self::integer( 'QMEDIAFLOW_PREDICTIVE_SAMPLE_RATE', 8, 1, 128 ); }
+    public static function predictive_threshold(): int { return self::integer( 'QMEDIAFLOW_PREDICTIVE_THRESHOLD', 24, 4, 10000 ); }
+    public static function predictive_cooldown(): int { return self::integer( 'QMEDIAFLOW_PREDICTIVE_COOLDOWN', 3600, 60, 86400 ); }
 
     /** @return int[] */
     public static function warm_widths(): array {
@@ -106,7 +112,7 @@ final class Runtime_Config {
 
         $front = self::front_controller_path();
         $config = array(
-            'version'           => 3,
+            'version'           => 4,
             'routing_schema'    => defined( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION' ) ? (string) QMEDIAFLOW_ROUTING_SCHEMA_VERSION : '5',
             'front_controller'  => $front,
             'cache_root'        => $cache_root,
@@ -115,6 +121,7 @@ final class Runtime_Config {
             'max_output_pixels' => (int) MEDIAFLOW_MAX_OUTPUT_PIXELS,
             'max_generators'    => self::generator_limit(),
             'telemetry'         => self::telemetry_enabled(),
+            'object_store'      => self::object_store_enabled(),
         );
         $state = hash( 'sha256', serialize( $config ) );
         $runtime_key = $cache_root . '|' . $state;
@@ -187,7 +194,7 @@ final class Runtime_Config {
     }
 
     private static function front_controller_path(): string {
-        $front = defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) QMEDIAFLOW_FRONT_CONTROLLER_PATH : ( defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) MEDIAFLOW_FRONT_CONTROLLER_PATH : '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php' );
+        $front = defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) QMEDIAFLOW_FRONT_CONTROLLER_PATH : ( defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) MEDIAFLOW_FRONT_CONTROLLER_PATH : '/wp-content/plugins/qmediaflow/qmediaflow-edge.php' );
         $parts = array_filter( explode( '/', trim( $front, '/' ) ), static fn( string $part ): bool => '' !== $part );
         $parts = array_map( static fn( string $part ): string => rawurlencode( rawurldecode( $part ) ), $parts );
         return '/' . implode( '/', $parts );
