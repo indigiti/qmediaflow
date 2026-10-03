@@ -49,7 +49,7 @@ final class REST_API {
         $base_variant = $this->resolver->variant_for( $id, $manifest, array_merge( $args, array( 'quality' => $settings->quality() ) ) );
         if ( ! $base_variant ) { return new \WP_Error( 'qmediaflow_transform', 'Requested transform is unavailable.', array( 'status' => 400 ) ); }
 
-        [ $focal_x, $focal_y ] = Focal_Point::get( $id );
+        [ $focal_x, $focal_y ] = Focal_Point::runtime( $id );
         $main_spec = array(
             'width'   => $base_variant->width,
             'height'  => $base_variant->height,
