@@ -7,12 +7,15 @@ final class Smart_Delivery {
     private Resolver $resolver;
     private Settings $settings;
     private Distribution $distribution;
+    private bool $smart_quality;
+    private ?array $registered_sizes = null;
 
     public function __construct( Manifest_Store $manifests, Resolver $resolver, Settings $settings, Distribution $distribution ) {
         $this->manifests = $manifests;
         $this->resolver = $resolver;
         $this->settings = $settings;
         $this->distribution = $distribution;
+        $this->smart_quality = Runtime_Config::content_aware_enabled();
     }
 
     public function hooks(): void {
@@ -23,37 +26,80 @@ final class Smart_Delivery {
 
     public function filter_downsize( $downsize, int $attachment_id, $size ) {
         if ( ! is_array( $downsize ) || empty( $downsize[0] ) ) { return $downsize; }
+        $cdn = $this->distribution->rewrites_urls();
+
+        // Array dimensions and non-cropped registered sizes cannot need focal
+        // resolution. If smart quality is disabled, preserve the resolver result.
+        if ( ! $this->smart_quality && ! $this->size_may_crop( $size ) ) {
+            if ( $cdn ) { $downsize[0] = $this->distribution->public_url( (string) $downsize[0] ); }
+            return $downsize;
+        }
+
         $manifest = $this->manifests->ensure_for_attachment( $attachment_id );
         if ( ! $manifest ) {
-            $downsize[0] = $this->distribution->public_url( (string) $downsize[0] );
+            if ( $cdn ) { $downsize[0] = $this->distribution->public_url( (string) $downsize[0] ); }
             return $downsize;
         }
         $spec = $this->resolver->spec_for_size( $size, $manifest );
         if ( ! $spec ) {
-            $downsize[0] = $this->distribution->public_url( (string) $downsize[0] );
+            if ( $cdn ) { $downsize[0] = $this->distribution->public_url( (string) $downsize[0] ); }
             return $downsize;
         }
-        $spec['quality'] = Encoding_Policy::quality( $manifest, absint( $spec['width'] ?? $downsize[1] ?? 0 ), (string) ( $spec['format'] ?? 'webp' ), absint( $spec['quality'] ?? $this->settings->quality() ) );
-        $url = $this->url_for_spec( $attachment_id, $manifest, $spec );
+
+        $focal_x = 50;
+        $focal_y = 50;
+        $needs_focal = false;
+        if ( ! empty( $spec['crop'] ) ) {
+            [ $focal_x, $focal_y ] = Focal_Point::get( $attachment_id );
+            $needs_focal = 50 !== $focal_x || 50 !== $focal_y;
+        }
+        if ( ! $this->smart_quality && ! $needs_focal ) {
+            if ( $cdn ) { $downsize[0] = $this->distribution->public_url( (string) $downsize[0] ); }
+            return $downsize;
+        }
+
+        if ( $this->smart_quality ) {
+            $spec['quality'] = Encoding_Policy::quality( $manifest, absint( $spec['width'] ?? $downsize[1] ?? 0 ), (string) ( $spec['format'] ?? 'webp' ), absint( $spec['quality'] ?? $this->settings->quality() ) );
+        }
+        $url = $needs_focal
+            ? Focal_Resolver::url( $attachment_id, $manifest, $spec, $focal_x, $focal_y )
+            : $this->resolver->custom_url( $attachment_id, $spec );
         $downsize[0] = $url ? $this->distribution->public_url( (string) $url ) : $this->distribution->public_url( (string) $downsize[0] );
         return $downsize;
     }
 
     public function filter_attributes( array $attr, \WP_Post $attachment, $size ): array {
         $id = (int) $attachment->ID;
+        $cdn = $this->distribution->rewrites_urls();
+        $may_crop = $this->size_may_crop( $size );
+        if ( ! $this->smart_quality && ! $may_crop ) {
+            if ( $cdn ) {
+                if ( ! empty( $attr['src'] ) ) { $attr['src'] = $this->distribution->public_url( (string) $attr['src'] ); }
+                if ( ! empty( $attr['srcset'] ) ) { $attr['srcset'] = $this->distribution->rewrite_srcset( (string) $attr['srcset'] ); }
+            }
+            return $attr;
+        }
+
         if ( ! empty( $attr['src'] ) ) { $attr['src'] = $this->distribution->public_url( (string) $attr['src'] ); }
         if ( ! empty( $attr['srcset'] ) ) { $attr['srcset'] = $this->smart_srcset( $id, (string) $attr['srcset'] ); }
         return $attr;
     }
 
     public function filter_content_tag( string $html, string $context, int $attachment_id ): string {
+        $cdn = $this->distribution->rewrites_urls();
+        // Avoid a second HTML parser pass for the overwhelmingly common default:
+        // no CDN rewrite, no smart quality and no cropped QMediaFlow candidate.
+        if ( ! $cdn && ! $this->smart_quality && ! str_contains( $html, '-c1-' ) ) { return $html; }
         if ( ! class_exists( '\\WP_HTML_Tag_Processor' ) ) { return $html; }
         $processor = new \WP_HTML_Tag_Processor( $html );
         if ( ! $processor->next_tag( 'img' ) ) { return $html; }
         $src = (string) $processor->get_attribute( 'src' );
         $srcset = (string) $processor->get_attribute( 'srcset' );
-        if ( '' !== $src ) { $processor->set_attribute( 'src', $this->distribution->public_url( $src ) ); }
-        if ( '' !== $srcset ) { $processor->set_attribute( 'srcset', $this->smart_srcset( $attachment_id, $srcset ) ); }
+        if ( '' !== $src && $cdn ) { $processor->set_attribute( 'src', $this->distribution->public_url( $src ) ); }
+        if ( '' !== $srcset ) {
+            if ( $this->smart_quality || str_contains( $srcset, '-c1-' ) ) { $processor->set_attribute( 'srcset', $this->smart_srcset( $attachment_id, $srcset ) ); }
+            elseif ( $cdn ) { $processor->set_attribute( 'srcset', $this->distribution->rewrite_srcset( $srcset ) ); }
+        }
         return $processor->get_updated_html();
     }
 
@@ -61,9 +107,8 @@ final class Smart_Delivery {
         if ( $attachment_id < 1 ) { return $this->distribution->rewrite_srcset( $srcset ); }
         $manifest = $this->manifests->ensure_for_attachment( $attachment_id );
         if ( ! $manifest ) { return $this->distribution->rewrite_srcset( $srcset ); }
-        [ $focal_x, $focal_y ] = Focal_Point::get( $attachment_id );
-        $smart_quality = Runtime_Config::content_aware_enabled();
 
+        $focal = null;
         $parts = preg_split( '/\s*,\s*/', trim( $srcset ) ) ?: array();
         $out = array();
         foreach ( $parts as $part ) {
@@ -77,9 +122,13 @@ final class Smart_Delivery {
                 $width = max( 1, absint( $token['w'] ) );
                 $crop = '1' === (string) $token['c'];
                 $base_quality = max( 1, min( 100, absint( $token['q'] ) ) );
-                $quality = $smart_quality ? Encoding_Policy::quality( $manifest, $width, $format, $this->settings->quality() ) : $base_quality;
-                $needs_focal = $crop && ( 50 !== $focal_x || 50 !== $focal_y );
-                if ( $smart_quality || $needs_focal ) {
+                $quality = $this->smart_quality ? Encoding_Policy::quality( $manifest, $width, $format, $this->settings->quality() ) : $base_quality;
+                $needs_focal = false;
+                if ( $crop ) {
+                    if ( null === $focal ) { $focal = Focal_Point::get( $attachment_id ); }
+                    $needs_focal = 50 !== $focal[0] || 50 !== $focal[1];
+                }
+                if ( $this->smart_quality || $needs_focal ) {
                     $spec = array(
                         'width'   => $width,
                         'height'  => max( 0, absint( $token['h'] ) ),
@@ -87,7 +136,9 @@ final class Smart_Delivery {
                         'format'  => $format,
                         'quality' => $quality,
                     );
-                    $smart = $needs_focal ? Focal_Resolver::url( $attachment_id, $manifest, $spec, $focal_x, $focal_y ) : $this->resolver->custom_url( $attachment_id, $spec );
+                    $smart = $needs_focal
+                        ? Focal_Resolver::url( $attachment_id, $manifest, $spec, $focal[0], $focal[1] )
+                        : $this->resolver->custom_url( $attachment_id, $spec );
                     if ( $smart ) { $url = (string) $smart; }
                 }
             }
@@ -96,11 +147,11 @@ final class Smart_Delivery {
         return $out ? implode( ', ', $out ) : $this->distribution->rewrite_srcset( $srcset );
     }
 
-    private function url_for_spec( int $attachment_id, array $manifest, array $spec ) {
-        if ( ! empty( $spec['crop'] ) ) {
-            [ $fx, $fy ] = Focal_Point::get( $attachment_id );
-            if ( 50 !== $fx || 50 !== $fy ) { return Focal_Resolver::url( $attachment_id, $manifest, $spec, $fx, $fy ); }
-        }
-        return $this->resolver->custom_url( $attachment_id, $spec );
+    private function size_may_crop( $size ): bool {
+        if ( ! is_string( $size ) || 'full' === $size ) { return false; }
+        if ( null === $this->registered_sizes ) { $this->registered_sizes = wp_get_registered_image_subsizes(); }
+        if ( empty( $this->registered_sizes[ $size ] ) ) { return false; }
+        $crop = $this->registered_sizes[ $size ]['crop'] ?? false;
+        return ! is_array( $crop ) && ! empty( $crop );
     }
 }
