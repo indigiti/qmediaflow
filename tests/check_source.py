@@ -55,11 +55,11 @@ def main():
     print('PASS: adaptive LQIP and bounded responsive contracts preserved')
 
     main=(ROOT/'mediaflow.php').read_text();branding=(ROOT/'includes/class-branding.php').read_text()
-    assert "QMEDIAFLOW_VERSION', '0.3.0'" in main and "QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '5'" in main
+    assert "QMEDIAFLOW_VERSION', '0.3.0'" in main and "QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '6'" in main
     assert "MEDIAFLOW_VERSION', QMEDIAFLOW_VERSION" in main and "MEDIAFLOW_ROUTING_SCHEMA_VERSION', QMEDIAFLOW_ROUTING_SCHEMA_VERSION" in main
     assert 'qmediaflow_url' in main and 'qmediaflow_image' in main and 'qmediaflow_picture' in main
-    assert 'qmediaflow-gateway.php' in main and "'QMediaFlow'" in branding
-    print('PASS: v0.3.0 QMediaFlow naming, compatibility aliases and API surface')
+    assert 'qmediaflow-edge.php' in main and "'QMediaFlow'" in branding
+    print('PASS: v0.3.0 QMediaFlow naming, schema 6 edge routing, compatibility aliases and API surface')
 
     upload=(ROOT/'includes/class-upload-optimizer.php').read_text();upload_js=(ROOT/'assets/js/mediaflow-upload.js').read_text();upload_worker=(ROOT/'assets/js/mediaflow-upload-worker.js').read_text()
     assert 'TARGET_BYTES = 480000' in upload and 'HARD_BYTES   = 500000' in upload
@@ -79,15 +79,17 @@ def main():
     assert 'Runtime_Config::generator_limit()' in budget
     print('PASS: generation admission, focal crop, telemetry, distribution and adaptive concurrency contracts')
 
-    gateway=(ROOT/'qmediaflow-gateway.php').read_text();runtime=(ROOT/'includes/class-runtime-config.php').read_text()
+    gateway=(ROOT/'qmediaflow-gateway.php').read_text();edge=(ROOT/'qmediaflow-edge.php').read_text();runtime=(ROOT/'includes/class-runtime-config.php').read_text()
     assert 'wp-load.php' not in gateway and 'require_once' not in gateway
     assert 'hash_hmac' in gateway and 'LOCK_EX | LOCK_NB' in gateway and "Cache-Control: public, max-age=31536000, immutable" in gateway
     assert "Cache-Control: no-store, max-age=0" in gateway and '@rename( $temp, $target )' in gateway
     assert 'register_shutdown_function( \'qmf_flush_metrics\' )' in gateway and 'function qmf_flush_metrics()' in gateway
+    assert 'wp-load.php' not in edge and "qmediaflow-gateway.php" in edge and 'distribution-pending' in edge
     assert '__qmediaflow-gateway-config.php' in runtime and 'ensure_extended_route' in runtime and '-fx[0-9]{1,3}-fy[0-9]{1,3}-s' in runtime
     assert '.qmediaflow-gateway-state' in runtime and "hash( 'sha256', serialize( $config ) )" in runtime
+    assert "'routing_schema'" in runtime and " : '6'" in runtime and "'object_store'" in runtime
     assert runtime.index("$installed   = is_readable( $state_path )") < runtime.index("$published['generated_at'] = time()")
-    print('PASS: standalone gateway stays WordPress-free, non-blocking and configuration sync is change-driven')
+    print('PASS: standalone gateway remains WordPress-free and schema-6 edge routing bridges cold derivatives to distribution')
 
     queue=(ROOT/'includes/class-derivative-queue.php').read_text();warmer=(ROOT/'includes/class-warmer.php').read_text();features=(ROOT/'includes/class-features.php').read_text()
     assert "@fopen( $path, 'x' )" in queue and "'0-critical'" in queue and 'as_enqueue_async_action' in queue and 'wp_schedule_single_event' in queue
@@ -110,11 +112,12 @@ def main():
     assert 'private static array $source_bytes_cache' in policy
     assert 'smart_srcset' in smart and 'Encoding_Policy::quality' in smart
     assert "! str_contains( $html, '-c1-' )" in smart and 'Focal_Point::runtime' in smart
+    assert 'return ! empty( $crop );' in smart
     assert 'p95_ms' in telemetry and 'gateway-metrics.json' in telemetry
     assert 'pending_counters' in telemetry and 'pending_timings' in telemetry and 'register_shutdown_function' in telemetry
     assert 'LOCK_EX | LOCK_NB' in telemetry and 'flush( false )' in telemetry
-    assert 'effective_generators' in health and 'immutable_headers' in health and 'encoder_benchmark' in health
-    print('PASS: smart delivery fast exits, cached encoding inputs and non-blocking buffered telemetry')
+    assert 'effective_generators' in health and 'immutable_headers' in health and 'encoder_benchmark' in health and 'edge_wrapper_file' in health and 'edge_routed' in health
+    print('PASS: smart delivery crop handling, cached encoding inputs, edge health and non-blocking buffered telemetry')
 
     focal=(ROOT/'includes/class-focal-point.php').read_text();focal_resolver=(ROOT/'includes/class-focal-resolver.php').read_text();rest=(ROOT/'includes/class-rest-api.php').read_text();woo=(ROOT/'includes/class-woocommerce-adapter.php').read_text();migration=(ROOT/'includes/class-thumbnail-migrator.php').read_text();ops=(ROOT/'includes/class-ops-cli.php').read_text()
     assert '_qmediaflow_focal_x' in focal and "'-fx%d-fy%d'" in (ROOT/'includes/class-variant.php').read_text()
