@@ -27,9 +27,6 @@ final class Smart_Delivery {
     public function filter_downsize( $downsize, int $attachment_id, $size ) {
         if ( ! is_array( $downsize ) || empty( $downsize[0] ) ) { return $downsize; }
         $cdn = $this->distribution->rewrites_urls();
-
-        // Array dimensions and non-cropped registered sizes cannot need focal
-        // resolution. If smart quality is disabled, preserve the resolver result.
         if ( ! $this->smart_quality && ! $this->size_may_crop( $size ) ) {
             if ( $cdn ) { $downsize[0] = $this->distribution->public_url( (string) $downsize[0] ); }
             return $downsize;
@@ -50,7 +47,7 @@ final class Smart_Delivery {
         $focal_y = 50;
         $needs_focal = false;
         if ( ! empty( $spec['crop'] ) ) {
-            [ $focal_x, $focal_y ] = Focal_Point::get( $attachment_id );
+            [ $focal_x, $focal_y ] = Focal_Point::runtime( $attachment_id );
             $needs_focal = 50 !== $focal_x || 50 !== $focal_y;
         }
         if ( ! $this->smart_quality && ! $needs_focal ) {
@@ -79,7 +76,6 @@ final class Smart_Delivery {
             }
             return $attr;
         }
-
         if ( ! empty( $attr['src'] ) ) { $attr['src'] = $this->distribution->public_url( (string) $attr['src'] ); }
         if ( ! empty( $attr['srcset'] ) ) { $attr['srcset'] = $this->smart_srcset( $id, (string) $attr['srcset'] ); }
         return $attr;
@@ -87,8 +83,6 @@ final class Smart_Delivery {
 
     public function filter_content_tag( string $html, string $context, int $attachment_id ): string {
         $cdn = $this->distribution->rewrites_urls();
-        // Avoid a second HTML parser pass for the overwhelmingly common default:
-        // no CDN rewrite, no smart quality and no cropped QMediaFlow candidate.
         if ( ! $cdn && ! $this->smart_quality && ! str_contains( $html, '-c1-' ) ) { return $html; }
         if ( ! class_exists( '\\WP_HTML_Tag_Processor' ) ) { return $html; }
         $processor = new \WP_HTML_Tag_Processor( $html );
@@ -125,7 +119,7 @@ final class Smart_Delivery {
                 $quality = $this->smart_quality ? Encoding_Policy::quality( $manifest, $width, $format, $this->settings->quality() ) : $base_quality;
                 $needs_focal = false;
                 if ( $crop ) {
-                    if ( null === $focal ) { $focal = Focal_Point::get( $attachment_id ); }
+                    if ( null === $focal ) { $focal = Focal_Point::runtime( $attachment_id ); }
                     $needs_focal = 50 !== $focal[0] || 50 !== $focal[1];
                 }
                 if ( $this->smart_quality || $needs_focal ) {
