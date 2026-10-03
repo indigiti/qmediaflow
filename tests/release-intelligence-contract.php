@@ -36,7 +36,7 @@ $assert( str_contains( $edge, "@fopen( \$job_path, 'x' )" ), 'Gateway distributi
 
 $assert( str_contains( $hardening, "rest_pre_dispatch" ) && str_contains( $hardening, 'is_post_publicly_viewable' ), 'REST image access must be visibility-gated.' );
 $assert( str_contains( $hardening, 'qmediaflow_rest_public_unattached' ) && str_contains( $hardening, ', false, $post' ), 'Unattached public REST exposure must be explicit opt-in.' );
-$assert( str_contains( $hardening, 'sync_focal_batch' ) && str_contains( $hardening, '/focal/' ), 'Existing focal metadata must have a bounded runtime backfill path.' );
+$assert( str_contains( $hardening, 'sync_focal_batch' ) && str_contains( $hardening, "'/focal'" ), 'Existing focal metadata must have a bounded runtime backfill path.' );
 $assert( str_contains( $hardening, 'LOCK_EX' ) || str_contains( $hardening, '@rename' ), 'Focal runtime publication must use controlled filesystem writes.' );
 
 $assert( str_contains( $intelligence, 'private const SAMPLE_MAX = 96' ), 'Image intelligence must remain bounded to a tiny sample.' );
