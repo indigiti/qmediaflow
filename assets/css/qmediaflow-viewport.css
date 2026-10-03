@@ -1,0 +1,16 @@
+img[data-qmediaflow-viewport="1"] {
+    filter: blur(var(--qmediaflow-viewport-blur, 12px));
+    transition: filter var(--qmediaflow-viewport-reveal, 180ms) ease-out;
+    will-change: filter;
+}
+
+img[data-qmediaflow-viewport="1"].qmediaflow-loaded {
+    filter: blur(0);
+    will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    img[data-qmediaflow-viewport="1"] {
+        transition: none;
+    }
+}
