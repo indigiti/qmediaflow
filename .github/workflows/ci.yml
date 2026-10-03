@@ -8,6 +8,7 @@ on:
       - 'feature/**'
       - 'feat/**'
       - 'fix/**'
+      - 'perf/**'
   pull_request:
 
 permissions:

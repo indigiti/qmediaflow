@@ -68,7 +68,9 @@ def main():
     assert 'createImageBitmap' in upload_js and "imageOrientation: 'from-image'" in upload_js and 'MAX_WORKERS' in upload_js and 'parallelMap' in upload_js
     assert 'X-MediaFlow-Upload' in upload_js and 'X-QMediaFlow-Upload-Workers' in upload_js and 'transformFormData' in upload_js
     assert 'OffscreenCanvas' in upload_worker and 'bestQuality' in upload_worker and 'DIMENSION_STEP = 0.90' in upload_worker
-    print('PASS: browser optimizer retains byte contract and adds bounded decode/worker backpressure')
+    assert 'MIN_DIMENSION_STEP = 0.65' in upload_worker and 'dimensionScale(' in upload_worker and 'Math.sqrt(targetBytes / encodedBytes)' in upload_worker
+    assert 'MAX_DIMENSION_PASSES = 32' in upload_worker
+    print('PASS: browser optimizer retains byte contract, bounded backpressure and adaptive dimension convergence')
 
     processor=(ROOT/'includes/class-processor.php').read_text();budget=(ROOT/'includes/class-budget.php').read_text()
     assert '@unlink( $lock_path )' not in processor
@@ -81,8 +83,11 @@ def main():
     assert 'wp-load.php' not in gateway and 'require_once' not in gateway
     assert 'hash_hmac' in gateway and 'LOCK_EX | LOCK_NB' in gateway and "Cache-Control: public, max-age=31536000, immutable" in gateway
     assert "Cache-Control: no-store, max-age=0" in gateway and '@rename( $temp, $target )' in gateway
+    assert 'register_shutdown_function( \'qmf_flush_metrics\' )' in gateway and 'function qmf_flush_metrics()' in gateway
     assert '__qmediaflow-gateway-config.php' in runtime and 'ensure_extended_route' in runtime and '-fx[0-9]{1,3}-fy[0-9]{1,3}-s' in runtime
-    print('PASS: standalone direct cold gateway bypasses WordPress and preserves security/cache semantics')
+    assert '.qmediaflow-gateway-state' in runtime and "hash( 'sha256', serialize( $config ) )" in runtime
+    assert runtime.index("$installed   = is_readable( $state_path )") < runtime.index("$published['generated_at'] = time()")
+    print('PASS: standalone gateway stays WordPress-free, non-blocking and configuration sync is change-driven')
 
     queue=(ROOT/'includes/class-derivative-queue.php').read_text();warmer=(ROOT/'includes/class-warmer.php').read_text();features=(ROOT/'includes/class-features.php').read_text()
     assert "@fopen( $path, 'x' )" in queue and "'0-critical'" in queue and 'as_enqueue_async_action' in queue and 'wp_schedule_single_event' in queue
@@ -94,23 +99,34 @@ def main():
     assert 'QMEDIAFLOW_CDN_BASE_URL' in runtime and 'qmediaflow_cdn_base_url' in runtime
     assert 'AWS4-HMAC-SHA256' in s3 and 'QMEDIAFLOW_S3_ENDPOINT' in s3 and 'health()' in s3
     assert 'distribution-queue' in distribution and 'public_url' in distribution
+    assert "substr( $identity, 0, 2 )" in distribution and "substr( $identity, 2, 2 )" in distribution and 'function job_paths()' in distribution
+    assert 'private string $public_base' in distribution and 'rewrites_urls()' in distribution
     assert "array( 'avif' => 'image/avif', 'webp' => 'image/webp' )" in picture and 'max_picture_candidates' in picture
-    print('PASS: CDN, S3-compatible object distribution and bounded AVIF/WebP picture contracts')
+    assert 'private static array $format_support' in picture and 'Focal_Point::runtime' in picture
+    print('PASS: CDN/S3 distribution is sharded, URL policy is cached, and picture capability checks are bounded')
 
     policy=(ROOT/'includes/class-encoding-policy.php').read_text();smart=(ROOT/'includes/class-smart-delivery.php').read_text();telemetry=(ROOT/'includes/class-telemetry.php').read_text();health=(ROOT/'includes/class-health.php').read_text()
     assert 'QMEDIAFLOW_CONTENT_AWARE_ENCODING' in runtime and 'bytes / $pixels' in policy
+    assert 'private static array $source_bytes_cache' in policy
     assert 'smart_srcset' in smart and 'Encoding_Policy::quality' in smart
+    assert "! str_contains( $html, '-c1-' )" in smart and 'Focal_Point::runtime' in smart
     assert 'p95_ms' in telemetry and 'gateway-metrics.json' in telemetry
+    assert 'pending_counters' in telemetry and 'pending_timings' in telemetry and 'register_shutdown_function' in telemetry
+    assert 'LOCK_EX | LOCK_NB' in telemetry and 'flush( false )' in telemetry
     assert 'effective_generators' in health and 'immutable_headers' in health and 'encoder_benchmark' in health
-    print('PASS: deterministic content-aware encoding, telemetry and health diagnostics contracts')
+    print('PASS: smart delivery fast exits, cached encoding inputs and non-blocking buffered telemetry')
 
     focal=(ROOT/'includes/class-focal-point.php').read_text();focal_resolver=(ROOT/'includes/class-focal-resolver.php').read_text();rest=(ROOT/'includes/class-rest-api.php').read_text();woo=(ROOT/'includes/class-woocommerce-adapter.php').read_text();migration=(ROOT/'includes/class-thumbnail-migrator.php').read_text();ops=(ROOT/'includes/class-ops-cli.php').read_text()
     assert '_qmediaflow_focal_x' in focal and "'-fx%d-fy%d'" in (ROOT/'includes/class-variant.php').read_text()
-    assert '$variant->focal_x' in focal_resolver and 'qmediaflow/v1' in rest and "permission_callback' => '__return_true'" in rest
+    assert 'public static function runtime' in focal and "'/focal/'" in focal and 'delete_runtime(' in focal
+    runtime_body=focal.split('public static function runtime',1)[1].split('public static function delete_runtime',1)[0]
+    assert 'get_post_meta' not in runtime_body
+    assert '$variant->focal_x' in focal_resolver and 'qmediaflow/v1' in rest and "permission_callback' => '__return_true'" in rest and 'Focal_Point::runtime' in rest
+    assert 'delete_attachment_runtime' in features
     assert 'woocommerce_gallery_thumbnail' in woo and '_product_image_gallery' in warmer
     assert 'thumbnail-migration/quarantine' in migration and 'rollback(' in migration and 'Dry run only' in ops
     assert "'qmediaflow health'" in ops and "'qmediaflow thumbnails migrate'" in ops
-    print('PASS: focal UI, WooCommerce, headless REST and reversible thumbnail migration contracts')
+    print('PASS: focal delivery is zero-DB, runtime state cleans up, and ecosystem adapters remain bounded')
 
     with tempfile.TemporaryDirectory() as d:
         active=multiprocessing.Value('i',0);peak=multiprocessing.Value('i',0);guard=multiprocessing.Lock();start=multiprocessing.Event();results=multiprocessing.Queue()

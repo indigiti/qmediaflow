@@ -9,6 +9,7 @@ namespace MediaFlow;
 final class Runtime_Config {
     private const ROUTE_BEGIN = '# BEGIN QMediaFlow Extensions';
     private const ROUTE_END   = '# END QMediaFlow Extensions';
+    private static array $gateway_synced = array();
 
     public static function enabled( string $constant, bool $default = false ): bool {
         if ( defined( $constant ) ) { return (bool) constant( $constant ); }
@@ -92,9 +93,8 @@ final class Runtime_Config {
     public static function mirror_originals(): bool { return self::enabled( 'QMEDIAFLOW_S3_MIRROR_ORIGINALS', false ); }
 
     /**
-     * Publish a tiny executable config next to the public cache so the standalone
-     * gateway can discover custom private roots and hard limits without loading WP.
-     * The file contains no signing key or object-store credentials.
+     * Publish standalone-gateway runtime data only when semantic state changes.
+     * Normal WordPress requests do one tiny marker read and zero writes.
      */
     public static function sync_gateway_config( Paths $paths ): bool {
         $cache_dir    = rtrim( $paths->cache_dir(), '/\\' );
@@ -102,36 +102,57 @@ final class Runtime_Config {
         $cache_root   = $paths->site_id() ? dirname( dirname( $cache_dir ) ) : $cache_dir;
         $private_root = $paths->site_id() ? dirname( dirname( $private_dir ) ) : $private_dir;
         if ( ! is_dir( $cache_root ) && ! wp_mkdir_p( $cache_root ) ) { return false; }
+        if ( ! is_dir( $private_root ) && ! wp_mkdir_p( $private_root ) ) { return false; }
 
+        $front = self::front_controller_path();
         $config = array(
-            'version'           => 2,
+            'version'           => 3,
+            'routing_schema'    => defined( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION' ) ? (string) QMEDIAFLOW_ROUTING_SCHEMA_VERSION : '5',
+            'front_controller'  => $front,
             'cache_root'        => $cache_root,
             'private_root'      => $private_root,
             'max_source_pixels' => (int) MEDIAFLOW_MAX_SOURCE_PIXELS,
             'max_output_pixels' => (int) MEDIAFLOW_MAX_OUTPUT_PIXELS,
             'max_generators'    => self::generator_limit(),
             'telemetry'         => self::telemetry_enabled(),
-            'generated_at'      => time(),
         );
+        $state = hash( 'sha256', serialize( $config ) );
+        $runtime_key = $cache_root . '|' . $state;
+        if ( isset( self::$gateway_synced[ $runtime_key ] ) ) { return true; }
 
-        $path = $cache_root . '/__qmediaflow-gateway-config.php';
-        $temp = $path . '.tmp-' . getmypid() . '-' . substr( hash( 'sha256', microtime( true ) . mt_rand() ), 0, 8 );
-        $php  = "<?php\nreturn " . var_export( $config, true ) . ";\n";
-        if ( false === @file_put_contents( $temp, $php, LOCK_EX ) ) { return false; }
+        $config_path = $cache_root . '/__qmediaflow-gateway-config.php';
+        $state_path  = $private_root . '/.qmediaflow-gateway-state';
+        $htaccess    = $cache_root . '/.htaccess';
+        $installed   = is_readable( $state_path ) ? trim( (string) @file_get_contents( $state_path ) ) : '';
+        if ( is_readable( $config_path ) && is_readable( $htaccess ) && hash_equals( $state, $installed ) ) {
+            self::$gateway_synced[ $runtime_key ] = true;
+            return true;
+        }
+
+        $published = $config;
+        $published['generated_at'] = time();
+        $temp = $config_path . '.tmp-' . getmypid() . '-' . substr( hash( 'sha256', microtime( true ) . mt_rand() ), 0, 8 );
+        $php  = "<?php\nreturn " . var_export( $published, true ) . ";\n";
+        if ( false === @file_put_contents( $temp, $php ) ) { return false; }
         @chmod( $temp, 0644 );
-        if ( ! @rename( $temp, $path ) ) { @unlink( $temp ); return false; }
-        @chmod( $path, 0644 );
+        if ( ! @rename( $temp, $config_path ) ) { @unlink( $temp ); return false; }
+        @chmod( $config_path, 0644 );
 
-        $route_ready = self::ensure_extended_route( $cache_root );
-        return is_readable( $path ) && $route_ready;
+        if ( ! self::ensure_extended_route( $cache_root, $front ) ) { return false; }
+        $state_temp = $state_path . '.tmp-' . getmypid() . '-' . substr( $state, 0, 8 );
+        if ( false === @file_put_contents( $state_temp, $state . "\n" ) ) { return false; }
+        @chmod( $state_temp, 0600 );
+        if ( ! @rename( $state_temp, $state_path ) ) { @unlink( $state_temp ); return false; }
+        @chmod( $state_path, 0600 );
+        self::$gateway_synced[ $runtime_key ] = true;
+        return true;
     }
 
     /**
-     * The historical MediaFlow managed rewrite block remains untouched. This small
-     * additional block adds focal-token routing and denies direct HTTP access to the
-     * gateway's path-discovery config. Nginx deployments must mirror both rules.
+     * Historical routing remains intact. This extension block adds focal tokens
+     * and denies direct HTTP access to the gateway path-discovery config.
      */
-    public static function ensure_extended_route( string $cache_root ): bool {
+    public static function ensure_extended_route( string $cache_root, ?string $front = null ): bool {
         $htaccess = rtrim( $cache_root, '/\\' ) . '/.htaccess';
         $existing = is_readable( $htaccess ) ? (string) @file_get_contents( $htaccess ) : '';
         $existing = str_replace( array( "\r\n", "\r" ), "\n", $existing );
@@ -140,11 +161,7 @@ final class Runtime_Config {
         $existing = preg_replace( '/(?:^|\n)' . $begin . '.*?' . $end . '(?=\n|$)/s', '', $existing );
         $existing = is_string( $existing ) ? trim( $existing ) : '';
 
-        $front = defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) QMEDIAFLOW_FRONT_CONTROLLER_PATH : ( defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) MEDIAFLOW_FRONT_CONTROLLER_PATH : '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php' );
-        $front_parts = array_filter( explode( '/', trim( $front, '/' ) ), static fn( string $part ): bool => '' !== $part );
-        $front_parts = array_map( static fn( string $part ): string => rawurlencode( rawurldecode( $part ) ), $front_parts );
-        $front = '/' . implode( '/', $front_parts );
-
+        $front = null === $front ? self::front_controller_path() : $front;
         $block = self::ROUTE_BEGIN . "\n"
             . "<Files \"__qmediaflow-gateway-config.php\">\n"
             . "  <IfModule mod_authz_core.c>\n"
@@ -167,5 +184,12 @@ final class Runtime_Config {
         if ( false === @file_put_contents( $htaccess, $content, LOCK_EX ) ) { return false; }
         @chmod( $htaccess, 0644 );
         return is_readable( $htaccess ) && $content === (string) @file_get_contents( $htaccess );
+    }
+
+    private static function front_controller_path(): string {
+        $front = defined( 'QMEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) QMEDIAFLOW_FRONT_CONTROLLER_PATH : ( defined( 'MEDIAFLOW_FRONT_CONTROLLER_PATH' ) ? (string) MEDIAFLOW_FRONT_CONTROLLER_PATH : '/wp-content/plugins/qmediaflow/qmediaflow-gateway.php' );
+        $parts = array_filter( explode( '/', trim( $front, '/' ) ), static fn( string $part ): bool => '' !== $part );
+        $parts = array_map( static fn( string $part ): string => rawurlencode( rawurldecode( $part ) ), $parts );
+        return '/' . implode( '/', $parts );
     }
 }

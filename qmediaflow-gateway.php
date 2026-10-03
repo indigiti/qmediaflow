@@ -10,23 +10,21 @@
 
 declare(strict_types=1);
 
+$GLOBALS['qmf_metrics_enabled'] = true;
+$GLOBALS['qmf_metric_buffer'] = array( 'private_dir' => '', 'counters' => array(), 'timings' => array() );
+register_shutdown_function( 'qmf_flush_metrics' );
+
 $method = strtoupper( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) );
-if ( ! in_array( $method, array( 'GET', 'HEAD' ), true ) ) {
-    qmf_fail( 405, 'Method not allowed.' );
-}
+if ( ! in_array( $method, array( 'GET', 'HEAD' ), true ) ) { qmf_fail( 405, 'Method not allowed.' ); }
 
 $request_uri = (string) ( $_SERVER['REQUEST_URI'] ?? '' );
 $path = (string) parse_url( $request_uri, PHP_URL_PATH );
 $needle = '/image-cache/';
 $pos = strpos( $path, $needle );
-if ( false === $pos ) {
-    qmf_fail( 404, 'Invalid QMediaFlow request.' );
-}
+if ( false === $pos ) { qmf_fail( 404, 'Invalid QMediaFlow request.' ); }
 $relative = ltrim( substr( $path, $pos + strlen( $needle ) ), '/' );
 $pattern = '#^(?:sites/(?<site>[1-9][0-9]{0,9})/)?(?<s1>\d{2})/(?<s2>\d{2})/(?<id>\d+)/(?<ns>[A-Za-z0-9_-]{4,32})/(?<rev>[a-f0-9]{12})/w(?<w>\d+)-h(?<h>\d+)-c(?<crop>[01])-q(?<q>\d+)(?:-fx(?<fx>\d{1,3})-fy(?<fy>\d{1,3}))?-s(?<sig>[a-f0-9]{32})\.(?<ext>avif|webp|jpe?g|png)$#i';
-if ( ! preg_match( $pattern, $relative, $m ) ) {
-    qmf_fail( 404, 'Invalid QMediaFlow image request.' );
-}
+if ( ! preg_match( $pattern, $relative, $m ) ) { qmf_fail( 404, 'Invalid QMediaFlow image request.' ); }
 
 $site_id = isset( $m['site'] ) && '' !== (string) $m['site'] ? (int) $m['site'] : 0;
 $id      = (int) $m['id'];
@@ -53,11 +51,8 @@ if ( $id < 1 || $width < 1 || $width > 8192 || $height < 0 || $height > 8192 || 
 }
 $level_one = intdiv( $id, 10000 ) % 100;
 $level_two = intdiv( $id, 100 ) % 100;
-if ( sprintf( '%02d/%02d', $level_one, $level_two ) !== $m['s1'] . '/' . $m['s2'] ) {
-    qmf_fail( 404, 'Invalid QMediaFlow shard.' );
-}
+if ( sprintf( '%02d/%02d', $level_one, $level_two ) !== $m['s1'] . '/' . $m['s2'] ) { qmf_fail( 404, 'Invalid QMediaFlow shard.' ); }
 
-// Standard plugin layout: wp-content/plugins/qmediaflow/qmediaflow-gateway.php.
 $content_root = dirname( __DIR__, 2 );
 $cache_root = $content_root . '/image-cache';
 $private_root = $content_root . '/.mediaflow-private';
@@ -70,6 +65,7 @@ if ( is_readable( $config_file ) ) {
     }
 }
 $config = isset( $config ) && is_array( $config ) ? $config : array();
+$GLOBALS['qmf_metrics_enabled'] = ! array_key_exists( 'telemetry', $config ) || ! empty( $config['telemetry'] );
 $scope = $site_id > 0 ? '/sites/' . $site_id : '';
 $private_dir = $private_root . $scope;
 $cache_dir   = $cache_root . $scope;
@@ -88,9 +84,7 @@ if ( ! is_array( $manifest ) || ! hash_equals( (string) ( $manifest['revision'] 
     qmf_fail( 404, 'QMediaFlow source revision was not found.' );
 }
 $key = include $secret_path;
-if ( ! is_string( $key ) || strlen( $key ) < 32 ) {
-    qmf_fail( 503, 'QMediaFlow signing storage is unavailable.' );
-}
+if ( ! is_string( $key ) || strlen( $key ) < 32 ) { qmf_fail( 503, 'QMediaFlow signing storage is unavailable.' ); }
 
 $payload = array(
     $site_id > 0 ? 'mf3-site-' . $site_id : 'mf2',
@@ -103,10 +97,7 @@ $payload = array(
     $quality,
     $format,
 );
-if ( 50 !== $focal_x || 50 !== $focal_y ) {
-    $payload[] = $focal_x;
-    $payload[] = $focal_y;
-}
+if ( 50 !== $focal_x || 50 !== $focal_y ) { $payload[] = $focal_x; $payload[] = $focal_y; }
 $expected = substr( hash_hmac( 'sha256', implode( '|', $payload ), $key ), 0, 32 );
 if ( ! hash_equals( $expected, $signature ) ) {
     qmf_metric( $private_dir, 'gateway_signature_rejected' );
@@ -117,9 +108,7 @@ $source = (string) ( $manifest['source_path'] ?? '' );
 $source_real = '' !== $source ? realpath( $source ) : false;
 $cache_real = realpath( $cache_root );
 $private_real = realpath( $private_root );
-if ( false === $source_real || ! is_readable( $source_real ) ) {
-    qmf_fallback( $private_dir, $manifest, 'source_missing' );
-}
+if ( false === $source_real || ! is_readable( $source_real ) ) { qmf_fallback( $private_dir, $manifest, 'source_missing' ); }
 $normalized_source = str_replace( '\\', '/', $source_real );
 foreach ( array_filter( array( $cache_real, $private_real ) ) as $forbidden ) {
     $forbidden = rtrim( str_replace( '\\', '/', (string) $forbidden ), '/' );
@@ -132,19 +121,13 @@ $source_w = max( 1, (int) ( $manifest['width'] ?? 0 ) );
 $source_h = max( 1, (int) ( $manifest['height'] ?? 0 ) );
 $max_source_pixels = max( 1, (int) ( $config['max_source_pixels'] ?? 24000000 ) );
 $max_output_pixels = max( 1, (int) ( $config['max_output_pixels'] ?? 8000000 ) );
-if ( $source_w * $source_h > $max_source_pixels ) {
-    qmf_fallback( $private_dir, $manifest, 'source_too_large' );
-}
+if ( $source_w * $source_h > $max_source_pixels ) { qmf_fallback( $private_dir, $manifest, 'source_too_large' ); }
 list( $out_w, $out_h ) = qmf_output_dimensions( $source_w, $source_h, $width, $height, $crop );
-if ( $out_w * $out_h > $max_output_pixels ) {
-    qmf_fail( 400, 'QMediaFlow output exceeds the processing pixel limit.' );
-}
+if ( $out_w * $out_h > $max_output_pixels ) { qmf_fail( 400, 'QMediaFlow output exceeds the processing pixel limit.' ); }
 
 $target = $cache_root . '/' . $relative;
 $target_dir = dirname( $target );
-if ( is_readable( $target ) ) {
-    qmf_serve( $target, qmf_mime( $format ), $method );
-}
+if ( is_readable( $target ) ) { qmf_serve( $target, qmf_mime( $format ), $method ); }
 if ( ! is_dir( $target_dir ) && ! @mkdir( $target_dir, 0755, true ) && ! is_dir( $target_dir ) ) {
     qmf_fallback( $private_dir, $manifest, 'cache_dir' );
 }
@@ -175,9 +158,7 @@ if ( ! is_resource( $slot ) ) {
 $started = microtime( true );
 try {
     clearstatcache( true, $target );
-    if ( is_readable( $target ) ) {
-        qmf_serve( $target, qmf_mime( $format ), $method );
-    }
+    if ( is_readable( $target ) ) { qmf_serve( $target, qmf_mime( $format ), $method ); }
     $settings = array();
     if ( is_readable( $settings_path ) ) {
         $raw_settings = @file_get_contents( $settings_path );
@@ -330,28 +311,72 @@ function qmf_fail( int $status, string $message ): never {
 }
 
 function qmf_metric( string $private_dir, string $name ): void { qmf_counter_add( $private_dir, $name, 1 ); }
+
 function qmf_counter_add( string $private_dir, string $name, int $delta ): void {
-    $path = $private_dir . '/gateway-metrics.json';
-    $lock = @fopen( $private_dir . '/gateway-metrics.lock', 'c' );
-    if ( ! is_resource( $lock ) || ! @flock( $lock, LOCK_EX ) ) { if ( is_resource( $lock ) ) @fclose( $lock ); return; }
-    try {
-        $data = array( 'version' => 1, 'counters' => array(), 'timings' => array(), 'updated_at' => 0 );
-        if ( is_readable( $path ) ) { $raw = @file_get_contents( $path ); $decoded = is_string( $raw ) ? json_decode( $raw, true ) : null; if ( is_array( $decoded ) ) $data = $decoded; }
-        $data['counters'][ $name ] = (int) ( $data['counters'][ $name ] ?? 0 ) + $delta;
-        $data['updated_at'] = time();
-        @file_put_contents( $path, json_encode( $data, JSON_UNESCAPED_SLASHES ), LOCK_EX ); @chmod( $path, 0600 );
-    } finally { @flock( $lock, LOCK_UN ); @fclose( $lock ); }
+    if ( empty( $GLOBALS['qmf_metrics_enabled'] ) || 0 === $delta ) { return; }
+    $buffer =& $GLOBALS['qmf_metric_buffer'];
+    $buffer['private_dir'] = $private_dir;
+    $buffer['counters'][ $name ] = (int) ( $buffer['counters'][ $name ] ?? 0 ) + $delta;
 }
+
 function qmf_timing( string $private_dir, string $name, float $ms ): void {
-    $path = $private_dir . '/gateway-metrics.json'; $lock = @fopen( $private_dir . '/gateway-metrics.lock', 'c' );
-    if ( ! is_resource( $lock ) || ! @flock( $lock, LOCK_EX ) ) { if ( is_resource( $lock ) ) @fclose( $lock ); return; }
+    if ( empty( $GLOBALS['qmf_metrics_enabled'] ) ) { return; }
+    $buffer =& $GLOBALS['qmf_metric_buffer'];
+    $buffer['private_dir'] = $private_dir;
+    $timing = is_array( $buffer['timings'][ $name ] ?? null ) ? $buffer['timings'][ $name ] : array( 'count' => 0, 'total_ms' => 0.0, 'max_ms' => 0.0, 'buckets' => array() );
+    ++$timing['count'];
+    $timing['total_ms'] = (float) $timing['total_ms'] + $ms;
+    $timing['max_ms'] = max( (float) $timing['max_ms'], $ms );
+    $bucket = 'inf';
+    foreach ( array( 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000 ) as $limit ) {
+        if ( $ms <= $limit ) { $bucket = (string) $limit; break; }
+    }
+    $timing['buckets'][ $bucket ] = (int) ( $timing['buckets'][ $bucket ] ?? 0 ) + 1;
+    $buffer['timings'][ $name ] = $timing;
+}
+
+/** Best-effort observability: never block a delivery response on metrics I/O. */
+function qmf_flush_metrics(): void {
+    if ( empty( $GLOBALS['qmf_metrics_enabled'] ) ) { return; }
+    $buffer = $GLOBALS['qmf_metric_buffer'] ?? array();
+    $private_dir = (string) ( $buffer['private_dir'] ?? '' );
+    if ( '' === $private_dir || ( empty( $buffer['counters'] ) && empty( $buffer['timings'] ) ) ) { return; }
+    $lock = @fopen( $private_dir . '/gateway-metrics.lock', 'c' );
+    if ( ! is_resource( $lock ) || ! @flock( $lock, LOCK_EX | LOCK_NB ) ) {
+        if ( is_resource( $lock ) ) { @fclose( $lock ); }
+        return;
+    }
     try {
+        $path = $private_dir . '/gateway-metrics.json';
         $data = array( 'version' => 1, 'counters' => array(), 'timings' => array(), 'updated_at' => 0 );
-        if ( is_readable( $path ) ) { $raw = @file_get_contents( $path ); $decoded = is_string( $raw ) ? json_decode( $raw, true ) : null; if ( is_array( $decoded ) ) $data = $decoded; }
-        $timing = is_array( $data['timings'][ $name ] ?? null ) ? $data['timings'][ $name ] : array( 'count' => 0, 'total_ms' => 0, 'max_ms' => 0, 'buckets' => array() );
-        ++$timing['count']; $timing['total_ms'] += $ms; $timing['max_ms'] = max( $timing['max_ms'], $ms );
-        $bucket = 'inf'; foreach ( array( 10,25,50,100,250,500,1000,2500,5000,10000 ) as $limit ) { if ( $ms <= $limit ) { $bucket = (string) $limit; break; } }
-        $timing['buckets'][ $bucket ] = (int) ( $timing['buckets'][ $bucket ] ?? 0 ) + 1; $data['timings'][ $name ] = $timing; $data['updated_at'] = time();
-        @file_put_contents( $path, json_encode( $data, JSON_UNESCAPED_SLASHES ), LOCK_EX ); @chmod( $path, 0600 );
-    } finally { @flock( $lock, LOCK_UN ); @fclose( $lock ); }
+        if ( is_readable( $path ) ) {
+            $raw = @file_get_contents( $path );
+            $decoded = is_string( $raw ) ? json_decode( $raw, true ) : null;
+            if ( is_array( $decoded ) ) { $data = $decoded; }
+        }
+        foreach ( (array) ( $buffer['counters'] ?? array() ) as $name => $delta ) {
+            $data['counters'][ $name ] = (int) ( $data['counters'][ $name ] ?? 0 ) + (int) $delta;
+        }
+        foreach ( (array) ( $buffer['timings'] ?? array() ) as $name => $pending ) {
+            $timing = is_array( $data['timings'][ $name ] ?? null ) ? $data['timings'][ $name ] : array( 'count' => 0, 'total_ms' => 0.0, 'max_ms' => 0.0, 'buckets' => array() );
+            $timing['count'] = (int) $timing['count'] + (int) ( $pending['count'] ?? 0 );
+            $timing['total_ms'] = (float) $timing['total_ms'] + (float) ( $pending['total_ms'] ?? 0 );
+            $timing['max_ms'] = max( (float) $timing['max_ms'], (float) ( $pending['max_ms'] ?? 0 ) );
+            foreach ( (array) ( $pending['buckets'] ?? array() ) as $bucket => $count ) {
+                $timing['buckets'][ (string) $bucket ] = (int) ( $timing['buckets'][ (string) $bucket ] ?? 0 ) + (int) $count;
+            }
+            $data['timings'][ $name ] = $timing;
+        }
+        $data['updated_at'] = time();
+        $json = json_encode( $data, JSON_UNESCAPED_SLASHES );
+        if ( ! is_string( $json ) ) { return; }
+        $temp = $path . '.tmp-' . getmypid() . '-' . substr( hash( 'sha256', microtime( true ) . mt_rand() ), 0, 8 );
+        if ( false === @file_put_contents( $temp, $json ) ) { return; }
+        @chmod( $temp, 0600 );
+        if ( ! @rename( $temp, $path ) ) { @unlink( $temp ); return; }
+        @chmod( $path, 0600 );
+    } finally {
+        @flock( $lock, LOCK_UN );
+        @fclose( $lock );
+    }
 }

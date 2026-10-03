@@ -8,6 +8,7 @@ final class Picture {
     private Settings $settings;
     private Distribution $distribution;
     private bool $wrapping = false;
+    private static array $format_support = array();
 
     public function __construct( Manifest_Store $manifests, Resolver $resolver, Settings $settings, Distribution $distribution ) {
         $this->manifests = $manifests;
@@ -17,9 +18,7 @@ final class Picture {
     }
 
     public function hooks(): void {
-        if ( Runtime_Config::dual_format_enabled() ) {
-            add_filter( 'wp_get_attachment_image', array( $this, 'filter_attachment_html' ), 90, 5 );
-        }
+        if ( Runtime_Config::dual_format_enabled() ) { add_filter( 'wp_get_attachment_image', array( $this, 'filter_attachment_html' ), 90, 5 ); }
     }
 
     public function filter_attachment_html( string $html, int $attachment_id, $size, bool $icon, array $attr ): string {
@@ -51,27 +50,34 @@ final class Picture {
         $per_format = max( 1, (int) floor( Runtime_Config::max_picture_candidates() / 2 ) );
         $widths = $this->bounded_widths( $widths, $display_w, $per_format );
 
+        $focal_x = 50;
+        $focal_y = 50;
+        if ( $variant->crop ) { [ $focal_x, $focal_y ] = Focal_Point::runtime( $attachment_id ); }
+        $needs_focal = $variant->crop && ( 50 !== $focal_x || 50 !== $focal_y );
+
         $sources = array();
         foreach ( array( 'avif' => 'image/avif', 'webp' => 'image/webp' ) as $format => $mime ) {
-            if ( ! wp_image_editor_supports( array( 'mime_type' => $mime ) ) ) { continue; }
+            if ( ! self::supports_format( $format, $mime ) ) { continue; }
             $parts = array();
             foreach ( $widths as $width ) {
                 $height = 0;
                 if ( $variant->crop && $aspect ) { $height = max( 1, (int) round( $width / $aspect ) ); }
                 $quality = Encoding_Policy::quality( $manifest, $width, $format, $this->settings->quality() );
                 $candidate_spec = array( 'width' => $width, 'height' => $height, 'crop' => $variant->crop, 'format' => $format, 'quality' => $quality );
-                $url = false;
-                if ( $variant->crop && class_exists( Focal_Point::class ) && class_exists( Focal_Resolver::class ) ) {
-                    [ $fx, $fy ] = Focal_Point::get( $attachment_id );
-                    if ( 50 !== $fx || 50 !== $fy ) { $url = Focal_Resolver::url( $attachment_id, $manifest, $candidate_spec, $fx, $fy ); }
-                }
-                if ( ! $url ) { $url = $this->resolver->custom_url( $attachment_id, $candidate_spec ); }
+                $url = $needs_focal
+                    ? Focal_Resolver::url( $attachment_id, $manifest, $candidate_spec, $focal_x, $focal_y )
+                    : $this->resolver->custom_url( $attachment_id, $candidate_spec );
                 if ( $url ) { $parts[] = esc_url( $this->distribution->public_url( (string) $url ) ) . ' ' . $width . 'w'; }
             }
             if ( $parts ) { $sources[] = '<source type="' . esc_attr( $mime ) . '" srcset="' . esc_attr( implode( ', ', $parts ) ) . '">'; }
         }
         if ( ! $sources ) { return $img_html; }
         return '<picture data-qmediaflow-picture="1">' . implode( '', $sources ) . $img_html . '</picture>';
+    }
+
+    private static function supports_format( string $format, string $mime ): bool {
+        if ( array_key_exists( $format, self::$format_support ) ) { return self::$format_support[ $format ]; }
+        return self::$format_support[ $format ] = wp_image_editor_supports( array( 'mime_type' => $mime ) );
     }
 
     /** @param int[] $widths @return int[] */
