@@ -71,60 +71,39 @@ final class Upload_Optimizer {
     }
 
     public function validate_upload( array $file ): array {
-        if ( ! $this->settings->upload_optimizer_enabled() ) {
-            return $file;
-        }
-
-        // Classic browser uploads use wp_handle_upload(). Enforce the final
-        // source contract for image uploads even if JavaScript failed to run.
-        if ( $this->looks_like_image( $file ) ) {
-            return $this->validate_final_file( $file );
-        }
-        return $file;
+        return $this->validate_ingestion( $file, false );
     }
 
     public function validate_sideload( array $file ): array {
-        if ( ! $this->settings->upload_optimizer_enabled() ) {
-            return $file;
-        }
-
-        // REST media uploads use the sideload path. Limit this validation to
-        // browser requests marked by MediaFlow so remote imports remain intact.
-        $marker = isset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ) ) : '';
-        if ( '1' !== $marker || ! $this->looks_like_image( $file ) ) {
-            return $file;
-        }
-        return $this->validate_final_file( $file );
+        return $this->validate_ingestion( $file, true );
     }
 
-    private function validate_final_file( array $file ): array {
-        if ( ! empty( $file['error'] ) ) {
+    private function validate_ingestion( array $file, bool $sideload ): array {
+        if ( ! empty( $file['error'] ) ) { return $file; }
+        $policy = defined( 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY' ) && QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY;
+        $marked = '1' === ( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ?? '' );
+        $optimized = $this->settings->upload_optimizer_enabled() && ( ! $sideload || $marked );
+        if ( ! $policy && ! $optimized ) { return $file; }
+
+        $tmp = (string) ( $file['tmp_name'] ?? '' );
+        $readable = '' !== $tmp && is_file( $tmp ) && is_readable( $tmp );
+        $mime = $readable ? (string) wp_get_image_mime( $tmp ) : '';
+        if ( ! $this->looks_like_image( $file ) && ! str_starts_with( $mime, 'image/' ) ) { return $file; }
+
+        // The marker is a browser compatibility hint, never an exemption from policy.
+        $allowed = $policy ? array( 'image/jpeg', 'image/webp' ) : array( 'image/webp' );
+        if ( ! in_array( $mime, $allowed, true ) ) {
+            $file['error'] = $policy ? 'QMediaFlow requires a valid JPEG or WebP image.' : 'QMediaFlow requires a valid optimized WebP image.';
             return $file;
         }
 
-        $tmp  = isset( $file['tmp_name'] ) ? (string) $file['tmp_name'] : '';
-        $mime = '';
-        if ( '' !== $tmp && is_readable( $tmp ) && function_exists( 'wp_get_image_mime' ) ) {
-            $mime = (string) wp_get_image_mime( $tmp );
+        $limit = $policy && defined( 'QMEDIAFLOW_NEWSROOM_MAX_BYTES' )
+            ? max( 1, (int) QMEDIAFLOW_NEWSROOM_MAX_BYTES ) : self::HARD_BYTES;
+        clearstatcache( true, $tmp );
+        $size = @filesize( $tmp );
+        if ( false === $size || $size < 1 || $size > $limit ) {
+            $file['error'] = sprintf( 'QMediaFlow rejected the image: maximum %d bytes.', $limit );
         }
-        if ( '' === $mime ) {
-            $mime = strtolower( (string) ( $file['type'] ?? '' ) );
-        }
-
-        if ( 'image/webp' !== $mime ) {
-            $file['error'] = 'MediaFlow upload rejected: optimized images must arrive as WebP.';
-            return $file;
-        }
-
-        $size = isset( $file['size'] ) ? (int) $file['size'] : 0;
-        if ( $size <= 0 && '' !== $tmp && is_file( $tmp ) ) {
-            $size = (int) filesize( $tmp );
-        }
-        if ( $size <= 0 || $size > self::HARD_BYTES ) {
-            $file['error'] = 'MediaFlow upload rejected: the final WebP must be 500 KB or smaller.';
-            return $file;
-        }
-
         return $file;
     }
 
