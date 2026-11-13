@@ -16,6 +16,26 @@ final class CLI {
         \WP_CLI::line( Encoding::check( Plugin::instance()->paths() ) );
     }
 
+    /** Report local storage checks without guessing HTTP or CDN behavior. */
+    public function health(): void {
+        $paths = Plugin::instance()->paths();
+        $private = realpath( $paths->private_dir() );
+        $root = empty( $_SERVER['DOCUMENT_ROOT'] ) ? false : realpath( (string) $_SERVER['DOCUMENT_ROOT'] );
+        \WP_CLI::line( 'Cache storage writable: ' . ( is_writable( $paths->cache_dir() ) ? 'Pass' : 'Fail' ) );
+        \WP_CLI::line( 'Private storage writable: ' . ( is_writable( $paths->private_dir() ) ? 'Pass' : 'Fail' ) );
+        $free = @disk_free_space( $paths->cache_dir() );
+        \WP_CLI::line( 'Cache filesystem bytes free: ' . ( false === $free ? 'Not verified' : sprintf( '%.0f', $free ) ) );
+        if ( false !== $private && false !== $root ) {
+            $inside = $private === $root || str_starts_with( $private, rtrim( $root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
+            \WP_CLI::line( 'Private path outside detected document root: ' . ( $inside ? 'Fail' : 'Pass (filesystem only)' ) );
+        } else {
+            \WP_CLI::line( 'Private path outside document root: Not verified' );
+        }
+        foreach ( array( 'Private/legacy HTTP isolation', 'Warm cache bypasses PHP', 'CDN cache headers', 'Queue draining' ) as $check ) {
+            \WP_CLI::line( $check . ': Not verified' );
+        }
+    }
+
     public function status(): void {
         $plugin   = Plugin::instance();
         $paths    = $plugin->paths();
