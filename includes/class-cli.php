@@ -284,6 +284,33 @@ final class CLI {
         }
     }
 
+    /**
+     * Remove one attachment's origin cache; default is a dry run.
+     *
+     * ## OPTIONS
+     * <attachment-id>
+     * [--apply]
+     * : Delete the origin cache. Does not purge the CDN or revoke access.
+     */
+    public function purge_attachment( array $args, array $assoc_args ): void {
+        $id = filter_var( $args[0] ?? '', FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 1 ) ) );
+        if ( false === $id ) { \WP_CLI::error( 'Supply a positive attachment ID.' ); }
+        $paths = Plugin::instance()->paths();
+        $root = $paths->cache_dir();
+        $target = $paths->attachment_root_dir( $id );
+        if ( ! is_dir( $target ) ) { \WP_CLI::line( 'No origin cache directory for this attachment.' ); return; }
+        $real_root = realpath( $root );
+        $real_target = realpath( $target );
+        if ( false === $real_root || false === $real_target || wp_normalize_path( $real_target ) !== rtrim( wp_normalize_path( $real_root ), '/' ) . substr( $target, strlen( $root ) ) ) {
+            \WP_CLI::error( 'Refused a noncanonical attachment cache path.' );
+        }
+        if ( ! isset( $assoc_args['apply'] ) ) { \WP_CLI::line( 'Dry run: ' . $target ); return; }
+        $this->delete_tree( $target, $root );
+        clearstatcache( true, $target );
+        if ( is_dir( $target ) ) { \WP_CLI::error( 'Origin cache directory remains; check permissions or concurrent generation.' ); }
+        \WP_CLI::success( 'Removed the attachment origin cache. Previously cached CDN copies were not purged.' );
+    }
+
     private function delete_tree( string $path, string $cache_root ): void {
         $cache_real = realpath( $cache_root );
         $real       = realpath( $path );
