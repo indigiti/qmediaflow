@@ -71,3 +71,38 @@ A warm derivative or warm Auto-LQIP never reaches PHP. Missing Auto-LQIPs should
 ## CDN
 
 A CDN may cache ready files under `image-cache/` as origin-static assets. Preserve the pending fallback's `no-store` behavior and do not negative-cache a missing Auto-LQIP URL for a long period; the same URL is expected to become a real static LQIP after the worker publishes it. Validate CDN behavior on staging.
+
+
+## Newsroom settings and deployment verification
+
+In Tools → MediaFlow, enable the independent newsroom upload policy and select
+the accepted formats and exact byte ceiling. The defaults are JPEG/WebP and
+500,000 bytes. `QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY` and
+`QMEDIAFLOW_NEWSROOM_MAX_BYTES` in wp-config.php take precedence over the
+corresponding dashboard values. The policy covers WordPress's upload and
+sideload hooks; an importer that writes directly to storage does not run those
+hooks and must be audited separately. Browser optimization still emits WebP and
+is suppressed when the policy excludes WebP.
+
+Run `wp mediaflow health` for local storage checks. HTTP checks remain
+**Not verified** until tested on your stack. Use a disposable staging attachment
+and non-secret canary files to test the following:
+
+1. Keep the runtime outside the document root. Confirm the legacy
+   `/wp-content/image-cache/.mf/` and `/wp-content/.mediaflow-private/`
+   paths cannot serve a canary at the origin or CDN. Check both before and
+   after a CDN purge. Never probe using a real signing key.
+2. Generate a derivative and repeat its request. Confirm the second request
+   bypasses PHP in origin/upstream logs, returns immutable cache headers, and
+   does not increase encoder usage. A fallback redirect must be no-store.
+3. Enqueue a preview and verify its marker disappears and its preview appears
+   after cron runs. Atomic marker publication requires hard-link support in the
+   private queue filesystem; without it, the marker is not published.
+4. Test Media Library, block editor, REST media and each importer with valid and
+   rejected images. Do not enable public derivative delivery for protected
+   media: this update does not implement protected-media authorization.
+
+For recovery, `wp mediaflow purge-attachment <id>` previews the origin path;
+append `--apply` to remove that attachment's generated origin cache. This does
+not delete the source, clear the CDN, revoke access or prevent regeneration.
+Use the correct site with `--url` on multisite.
