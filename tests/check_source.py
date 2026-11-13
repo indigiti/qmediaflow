@@ -85,7 +85,8 @@ def main():
     assert 'TARGET_BYTES = 480000' in upload and 'HARD_BYTES   = 500000' in upload
     assert 'wp_handle_upload_prefilter' in upload and 'wp_handle_sideload_prefilter' in upload
     assert 'wp_client_side_media_processing_enabled' in upload
-    assert "'image/webp' !== $mime" in upload and 'size > self::HARD_BYTES' in upload
+    assert 'wp_get_image_mime( $tmp )' in upload and '@filesize( $tmp )' in upload
+    assert 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY' in upload and "'image/jpeg', 'image/webp'" in upload
     assert 'createImageBitmap' in upload_js and "imageOrientation: 'from-image'" in upload_js
     assert 'X-MediaFlow-Upload' in upload_js and 'transformFormData' in upload_js
     assert 'OffscreenCanvas' in upload_worker and 'bestQuality' in upload_worker
