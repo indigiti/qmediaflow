@@ -19,6 +19,7 @@ function content_url( string $path = '' ): string { return 'https://example.test
 function wp_parse_url( string $url, int $component = -1 ) { return parse_url( $url, $component ); }
 function wp_mkdir_p( string $path ): bool { return is_dir( $path ) || mkdir( $path, 0777, true ); }
 function wp_normalize_path( string $path ): string { return str_replace( '\\', '/', $path ); }
+function wp_get_upload_dir(): array { return array( 'basedir' => WP_CONTENT_DIR . '/uploads' ); }
 function wp_image_editor_supports( array $args ): bool { return true; }
 final class MF_Auto_Editor {
     private int $width = 256; private int $quality = 24;
@@ -97,6 +98,14 @@ $pass( 'filesystem anti-stampede queue deduplicates first-visit generation' );
 
 $fixture = dirname( __DIR__ ) . '/tests/fixtures/plain.png';
 $manifest['source_path'] = $fixture;
+if ( null !== $store->source_path( $manifest ) ) { $fail( 'source outside uploads was accepted' ); }
+$uploads = WP_CONTENT_DIR . '/uploads';
+wp_mkdir_p( $uploads );
+symlink( $fixture, $uploads . '/escape.png' );
+$manifest['source_path'] = $uploads . '/escape.png';
+if ( null !== $store->source_path( $manifest ) ) { $fail( 'uploads symlink escape was accepted' ); }
+$manifest['source_path'] = $uploads . '/source.png';
+copy( $fixture, $manifest['source_path'] );
 $generate = ( new ReflectionClass( \MediaFlow\Manifest_Store::class ) )->getMethod( 'generate_external_lqip' );
 $generate->setAccessible( true );
 if ( true !== $generate->invoke( $store, 12345, $manifest, $settings->lqip_signature() ) ) { $fail( 'background LQIP generation should publish static preview' ); }
