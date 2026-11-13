@@ -12,10 +12,35 @@ final class Admin {
 
     public function hooks(): void {
         add_action( 'admin_post_mediaflow_check_encoding', static fn() => Plugin::instance()->admin()->check_encoding() );
+        add_action( 'add_meta_boxes_post', array( $this, 'add_editor_checks' ) );
         add_action( 'admin_menu', static fn() => Plugin::instance()->admin()->menu() );
         add_action( 'admin_post_mediaflow_save_settings', static fn() => Plugin::instance()->admin()->save_settings() );
         add_action( 'admin_post_mediaflow_rotate_cache', static fn() => Plugin::instance()->admin()->rotate_cache() );
         add_action( 'wp_ajax_mediaflow_lqip_rebuild', static fn() => Plugin::instance()->admin()->lqip_rebuild_ajax() );
+    }
+
+    public function add_editor_checks( \WP_Post $post ): void {
+        if ( ! current_user_can( 'edit_post', $post->ID ) ) { return; }
+        add_meta_box( 'qmediaflow-publish-check', 'QMediaFlow image checks', array( $this, 'render_editor_checks' ), 'post', 'side' );
+    }
+
+    public function render_editor_checks( \WP_Post $post ): void {
+        $id = (int) get_post_thumbnail_id( $post );
+        if ( ! $id ) { echo '<p>No featured image saved.</p>'; return; }
+        $meta = wp_get_attachment_metadata( $id );
+        $width = (int) ( $meta['width'] ?? 0 );
+        $bytes = (int) ( $meta['filesize'] ?? 0 );
+        $alt = trim( (string) get_post_meta( $id, '_wp_attachment_image_alt', true ) );
+        $minimum = max( 1, (int) apply_filters( 'qmediaflow_editor_hero_min_width', 1200, $post ) );
+        $warnings = array();
+        if ( '' === $alt ) { $warnings[] = 'No alternative text is saved. Add it if the image conveys information.'; }
+        if ( ! $width ) { $warnings[] = 'Featured-image width is not verified.'; }
+        elseif ( $width < $minimum ) { $warnings[] = sprintf( 'Featured image is %d px wide; recommended minimum is %d px.', $width, $minimum ); }
+        if ( ! $bytes ) { $warnings[] = 'Fallback file size is not verified.'; }
+        elseif ( $bytes > $this->settings->newsroom_max_bytes() ) { $warnings[] = sprintf( 'The saved source is %d bytes and exceeds the newsroom byte limit.', $bytes ); }
+        echo '<p>Advisory only. Checks reflect the last saved featured image.</p>';
+        foreach ( $warnings as $warning ) { echo '<p>' . esc_html( $warning ) . '</p>'; }
+        if ( ! $warnings ) { echo '<p>No warnings for the saved image.</p>'; }
     }
 
     public function menu(): void {
