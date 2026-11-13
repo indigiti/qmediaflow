@@ -22,16 +22,26 @@ $optimizer = new \MediaFlow\Upload_Optimizer( $settings );
 $pass = static function ( string $message ): void { echo "PASS: {$message}\n"; };
 $fail = static function ( string $message ): void { fwrite( STDERR, "FAIL: {$message}\n" ); exit( 1 ); };
 
-$valid = array( 'name' => 'photo.webp', 'type' => 'image/webp', 'tmp_name' => '/tmp/mediaflow-test.webp', 'size' => 500000, 'error' => 0 );
+$dir = sys_get_temp_dir() . '/qmf-upload-' . bin2hex( random_bytes( 8 ) );
+mkdir( $dir, 0700 );
+register_shutdown_function( static function () use ( $dir ): void {
+    foreach ( glob( $dir . '/*' ) as $path ) { unlink( $path ); }
+    rmdir( $dir );
+} );
+$webp = $dir . '/source.webp';
+$jpg = $dir . '/source.jpg';
+file_put_contents( $webp, str_repeat( 'x', 500000 ) );
+file_put_contents( $jpg, 'jpeg test fixture' );
+$valid = array( 'name' => 'photo.webp', 'type' => 'image/webp', 'tmp_name' => $webp, 'size' => 500000, 'error' => 0 );
 $result = $optimizer->validate_upload( $valid );
 empty( $result['error'] ) ? $pass( '500 KB WebP is accepted' ) : $fail( '500 KB WebP should be accepted' );
 
 $oversize = $valid;
-$oversize['size'] = 500001;
+file_put_contents( $webp, 'x', FILE_APPEND ); // Metadata still claims 500000 bytes.
 $result = $optimizer->validate_upload( $oversize );
 ! empty( $result['error'] ) ? $pass( '500 KB hard ceiling rejects larger WebP' ) : $fail( 'Oversized WebP was accepted' );
 
-$jpeg = array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => '/tmp/mediaflow-test.jpg', 'size' => 120000, 'error' => 0 );
+$jpeg = array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => $jpg, 'size' => 120000, 'error' => 0 );
 $result = $optimizer->validate_upload( $jpeg );
 ! empty( $result['error'] ) ? $pass( 'classic image upload rejects non-WebP final source' ) : $fail( 'JPEG final source was accepted' );
 
@@ -46,3 +56,12 @@ empty( $result['error'] ) ? $pass( 'unmarked server sideload remains compatible'
 $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] = '1';
 $result = $optimizer->validate_sideload( $jpeg );
 ! empty( $result['error'] ) ? $pass( 'marked REST browser upload enforces final WebP contract' ) : $fail( 'Marked REST JPEG was accepted' );
+
+define( 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY', true );
+unset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] );
+$result = $optimizer->validate_sideload( $jpeg );
+empty( $result['error'] ) ? $pass( 'unmarked sideload accepts actual JPEG under newsroom policy' ) : $fail( 'JPEG was rejected under newsroom policy' );
+$result = $optimizer->validate_sideload( $oversize );
+! empty( $result['error'] ) ? $pass( 'unmarked sideload enforces actual byte ceiling' ) : $fail( 'Oversized sideload bypassed policy' );
+$result = $optimizer->validate_upload( array_replace( $valid, array( 'tmp_name' => $dir . '/missing.webp' ) ) );
+! empty( $result['error'] ) ? $pass( 'claimed MIME does not substitute for an actual file' ) : $fail( 'Missing file was accepted' );
