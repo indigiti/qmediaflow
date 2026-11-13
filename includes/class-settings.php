@@ -33,6 +33,9 @@ final class Settings {
 
     public static function defaults(): array {
         return array(
+            'newsroom_enabled'     => false,
+            'newsroom_mimes'       => array( 'image/jpeg', 'image/webp' ),
+            'newsroom_max_bytes'   => 500000,
             'core_size_mode'       => 'safe',
             'format'               => 'auto',
             'quality'              => 82,
@@ -141,6 +144,25 @@ final class Settings {
 
     public function max_srcset_candidates(): int {
         return max( 2, min( 6, absint( $this->values['max_srcset_candidates'] ?? 4 ) ) );
+    }
+
+    public function newsroom_enabled(): bool {
+        return defined( 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY' )
+            ? (bool) QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY : ! empty( $this->values['newsroom_enabled'] );
+    }
+
+    public function newsroom_mimes(): array {
+        return self::normalize_newsroom_mimes( $this->values['newsroom_mimes'] ?? self::defaults()['newsroom_mimes'] );
+    }
+
+    public function newsroom_max_bytes(): int {
+        return defined( 'QMEDIAFLOW_NEWSROOM_MAX_BYTES' )
+            ? max( 1, (int) QMEDIAFLOW_NEWSROOM_MAX_BYTES ) : max( 1, min( 100000000, (int) ( $this->values['newsroom_max_bytes'] ?? 500000 ) ) );
+    }
+
+    private static function normalize_newsroom_mimes( $value ): array {
+        return array_values( array_intersect( array( 'image/jpeg', 'image/webp', 'image/png', 'image/avif' ), (array) $value ) )
+            ?: array( 'image/jpeg', 'image/webp' );
     }
 
     public function upload_optimizer_enabled(): bool {
@@ -268,6 +290,9 @@ final class Settings {
         }
 
         $this->values = array(
+            'newsroom_enabled'     => ! empty( $input['newsroom_enabled'] ),
+            'newsroom_mimes'       => self::normalize_newsroom_mimes( $input['newsroom_mimes'] ?? array() ),
+            'newsroom_max_bytes'   => max( 1, min( 100000000, (int) ( $input['newsroom_max_bytes'] ?? 500000 ) ) ),
             'core_size_mode'        => $mode,
             'progressive_jpeg'      => $jpeg,
             'interlaced_png'        => $png,

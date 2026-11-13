@@ -345,16 +345,13 @@ final class Manifest_Store {
         $dir   = dirname( $queue );
         if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) { return false; }
 
-        $previous = $this->read_queue_marker( $queue );
-        $now      = time();
-        if ( $previous ) {
-            $state       = (string) ( $previous['state'] ?? 'queued' );
-            $updated_at  = absint( $previous['updated_at'] ?? 0 );
-            $retry_after = absint( $previous['retry_after'] ?? 0 );
-            if ( 'failed' === $state && $retry_after > $now ) { return false; }
-            if ( in_array( $state, array( 'queued', 'processing' ), true ) && $updated_at > $now - 900 ) { return false; }
-            @unlink( $queue );
+        if ( is_file( $queue ) ) {
+            // Recover a queued marker if its cron event was lost.
+            $existing = $this->read_queue_marker( $queue );
+            if ( $existing ) { $this->schedule_lqip_worker( max( time() + 1, absint( $existing['retry_after'] ?? 0 ) ) ); }
+            return false;
         }
+        $now = time();
 
         $marker = array(
             'state'         => 'queued',
@@ -363,25 +360,25 @@ final class Manifest_Store {
             'revision'      => $revision,
             'signature'     => $signature,
             'extension'     => $this->lqip_extension(),
-            'attempts'      => absint( $previous['attempts'] ?? 0 ),
+            'attempts'      => 0,
             'queued_at'     => $now,
             'updated_at'    => $now,
             'retry_after'   => 0,
         );
 
-        $handle = @fopen( $queue, 'x' );
-        if ( ! is_resource( $handle ) ) { return false; }
-        $json = wp_json_encode( $marker, JSON_UNESCAPED_SLASHES );
-        $ok   = is_string( $json ) && false !== @fwrite( $handle, $json );
-        @fclose( $handle );
-        @chmod( $queue, 0600 );
-        if ( ! $ok ) { @unlink( $queue ); return false; }
+        // Link the complete, private temp file into place without clobbering
+        // a marker published by another request. The scanner ignores .tmp files.
+        $tmp = @tempnam( $dir, '.qmf-' );
+        if ( false === $tmp ) { return false; }
+        try {
+            $json = wp_json_encode( $marker, JSON_UNESCAPED_SLASHES );
+            if ( ! is_string( $json ) || @file_put_contents( $tmp, $json ) !== strlen( $json )
+                || ! @chmod( $tmp, 0600 ) || ! @link( $tmp, $queue ) ) { return false; }
+        } finally {
+            @unlink( $tmp );
+        }
 
         if ( ! $this->schedule_lqip_worker( $now + 1 ) ) {
-            $marker['state']       = 'failed';
-            $marker['updated_at']  = time();
-            $marker['retry_after'] = time() + 300;
-            $this->write_atomic( $queue, $marker );
             return false;
         }
         return true;

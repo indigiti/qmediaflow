@@ -16,6 +16,26 @@ final class CLI {
         \WP_CLI::line( Encoding::check( Plugin::instance()->paths() ) );
     }
 
+    /** Report local storage checks without guessing HTTP or CDN behavior. */
+    public function health(): void {
+        $paths = Plugin::instance()->paths();
+        $private = realpath( $paths->private_dir() );
+        $root = empty( $_SERVER['DOCUMENT_ROOT'] ) ? false : realpath( (string) $_SERVER['DOCUMENT_ROOT'] );
+        \WP_CLI::line( 'Cache storage writable: ' . ( is_writable( $paths->cache_dir() ) ? 'Pass' : 'Fail' ) );
+        \WP_CLI::line( 'Private storage writable: ' . ( is_writable( $paths->private_dir() ) ? 'Pass' : 'Fail' ) );
+        $free = @disk_free_space( $paths->cache_dir() );
+        \WP_CLI::line( 'Cache filesystem bytes free: ' . ( false === $free ? 'Not verified' : sprintf( '%.0f', $free ) ) );
+        if ( false !== $private && false !== $root ) {
+            $inside = $private === $root || str_starts_with( $private, rtrim( $root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
+            \WP_CLI::line( 'Private path outside detected document root: ' . ( $inside ? 'Fail' : 'Pass (filesystem only)' ) );
+        } else {
+            \WP_CLI::line( 'Private path outside document root: Not verified' );
+        }
+        foreach ( array( 'Private/legacy HTTP isolation', 'Warm cache bypasses PHP', 'CDN cache headers', 'Queue draining' ) as $check ) {
+            \WP_CLI::line( $check . ': Not verified' );
+        }
+    }
+
     public function status(): void {
         $plugin   = Plugin::instance();
         $paths    = $plugin->paths();
@@ -262,6 +282,33 @@ final class CLI {
                 }
             }
         }
+    }
+
+    /**
+     * Remove one attachment's origin cache; default is a dry run.
+     *
+     * ## OPTIONS
+     * <attachment-id>
+     * [--apply]
+     * : Delete the origin cache. Does not purge the CDN or revoke access.
+     */
+    public function purge_attachment( array $args, array $assoc_args ): void {
+        $id = filter_var( $args[0] ?? '', FILTER_VALIDATE_INT, array( 'options' => array( 'min_range' => 1 ) ) );
+        if ( false === $id ) { \WP_CLI::error( 'Supply a positive attachment ID.' ); }
+        $paths = Plugin::instance()->paths();
+        $root = $paths->cache_dir();
+        $target = $paths->attachment_root_dir( $id );
+        if ( ! is_dir( $target ) ) { \WP_CLI::line( 'No origin cache directory for this attachment.' ); return; }
+        $real_root = realpath( $root );
+        $real_target = realpath( $target );
+        if ( false === $real_root || false === $real_target || wp_normalize_path( $real_target ) !== rtrim( wp_normalize_path( $real_root ), '/' ) . substr( $target, strlen( $root ) ) ) {
+            \WP_CLI::error( 'Refused a noncanonical attachment cache path.' );
+        }
+        if ( ! isset( $assoc_args['apply'] ) ) { \WP_CLI::line( 'Dry run: ' . $target ); return; }
+        $this->delete_tree( $target, $root );
+        clearstatcache( true, $target );
+        if ( is_dir( $target ) ) { \WP_CLI::error( 'Origin cache directory remains; check permissions or concurrent generation.' ); }
+        \WP_CLI::success( 'Removed the attachment origin cache. Previously cached CDN copies were not purged.' );
     }
 
     private function delete_tree( string $path, string $cache_root ): void {

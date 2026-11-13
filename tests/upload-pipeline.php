@@ -65,3 +65,13 @@ $result = $optimizer->validate_sideload( $oversize );
 ! empty( $result['error'] ) ? $pass( 'unmarked sideload enforces actual byte ceiling' ) : $fail( 'Oversized sideload bypassed policy' );
 $result = $optimizer->validate_upload( array_replace( $valid, array( 'tmp_name' => $dir . '/missing.webp' ) ) );
 ! empty( $result['error'] ) ? $pass( 'claimed MIME does not substitute for an actual file' ) : $fail( 'Missing file was accepted' );
+
+$config = \MediaFlow\Settings::defaults();
+$config['newsroom_mimes'] = array( 'image/jpeg' );
+$config['newsroom_max_bytes'] = 10;
+$values_prop->setValue( $settings, $config );
+$result = $optimizer->validate_sideload( $jpeg );
+! empty( $result['error'] ) ? $pass( 'configured ceiling is used for JPEG sideloads' ) : $fail( 'configured ceiling was not enforced' );
+file_put_contents( $webp, 'x' );
+$result = $optimizer->validate_upload( $valid );
+! empty( $result['error'] ) ? $pass( 'excluded MIME rejected even below configured ceiling' ) : $fail( 'excluded format was accepted' );

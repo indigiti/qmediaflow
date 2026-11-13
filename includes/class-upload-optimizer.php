@@ -31,11 +31,11 @@ final class Upload_Optimizer {
      * the source transform when enabled, so running both would encode twice.
      */
     public function disable_core_client_processing( bool $enabled ): bool {
-        return $this->settings->upload_optimizer_enabled() ? false : $enabled;
+        return $this->browser_pipeline_enabled() ? false : $enabled;
     }
 
     public function enqueue( string $hook_suffix = '' ): void {
-        if ( ! $this->settings->upload_optimizer_enabled() || ! current_user_can( 'upload_files' ) ) {
+        if ( ! $this->browser_pipeline_enabled() || ! current_user_can( 'upload_files' ) ) {
             return;
         }
 
@@ -70,6 +70,13 @@ final class Upload_Optimizer {
         );
     }
 
+    private function browser_pipeline_enabled(): bool {
+        // The browser encoder emits WebP only. Do not intercept uploads if
+        // the independent policy disallows WebP.
+        return $this->settings->upload_optimizer_enabled()
+            && ( ! $this->settings->newsroom_enabled() || in_array( 'image/webp', $this->settings->newsroom_mimes(), true ) );
+    }
+
     public function validate_upload( array $file ): array {
         return $this->validate_ingestion( $file, false );
     }
@@ -80,9 +87,9 @@ final class Upload_Optimizer {
 
     private function validate_ingestion( array $file, bool $sideload ): array {
         if ( ! empty( $file['error'] ) ) { return $file; }
-        $policy = defined( 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY' ) && QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY;
+        $policy = $this->settings->newsroom_enabled();
         $marked = '1' === ( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ?? '' );
-        $optimized = $this->settings->upload_optimizer_enabled() && ( ! $sideload || $marked );
+        $optimized = $this->browser_pipeline_enabled() && ( ! $sideload || $marked );
         if ( ! $policy && ! $optimized ) { return $file; }
 
         $tmp = (string) ( $file['tmp_name'] ?? '' );
@@ -91,14 +98,13 @@ final class Upload_Optimizer {
         if ( ! $this->looks_like_image( $file ) && ! str_starts_with( $mime, 'image/' ) ) { return $file; }
 
         // The marker is a browser compatibility hint, never an exemption from policy.
-        $allowed = $policy ? array( 'image/jpeg', 'image/webp' ) : array( 'image/webp' );
+        $allowed = $policy ? $this->settings->newsroom_mimes() : array( 'image/webp' );
         if ( ! in_array( $mime, $allowed, true ) ) {
-            $file['error'] = $policy ? 'QMediaFlow requires a valid JPEG or WebP image.' : 'QMediaFlow requires a valid optimized WebP image.';
+            $file['error'] = $policy ? 'QMediaFlow requires a valid image in one of these formats: ' . implode( ', ', $allowed ) . '.' : 'QMediaFlow requires a valid optimized WebP image.';
             return $file;
         }
 
-        $limit = $policy && defined( 'QMEDIAFLOW_NEWSROOM_MAX_BYTES' )
-            ? max( 1, (int) QMEDIAFLOW_NEWSROOM_MAX_BYTES ) : self::HARD_BYTES;
+        $limit = $policy ? $this->settings->newsroom_max_bytes() : self::HARD_BYTES;
         clearstatcache( true, $tmp );
         $size = @filesize( $tmp );
         if ( false === $size || $size < 1 || $size > $limit ) {
