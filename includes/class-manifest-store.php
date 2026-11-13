@@ -118,7 +118,7 @@ final class Manifest_Store {
 
     public function build( int $attachment_id, ?array $metadata = null, bool $allow_lqip = false ): ?array {
         $this->paths->ensure();
-        $source = get_attached_file( $attachment_id, true );
+        $source = $this->approved_source( get_attached_file( $attachment_id, true ) );
         if ( ! is_string( $source ) || '' === $source || ! is_readable( $source ) ) {
             return null;
         }
@@ -259,26 +259,28 @@ final class Manifest_Store {
     }
 
     public function source_path( array $manifest ): ?string {
-        $absolute = isset( $manifest['source_path'] ) ? (string) $manifest['source_path'] : '';
-        if ( '' !== $absolute && is_readable( $absolute ) && ! $this->paths->is_inside_any_cache( $absolute ) && ! $this->paths->is_inside_any_private( $absolute ) ) {
-            return $absolute;
-        }
+        $attachment_id = absint( $manifest['id'] ?? 0 );
+        if ( ! $attachment_id ) { return null; }
 
-        $source      = isset( $manifest['source'] ) ? (string) $manifest['source'] : '';
-        $source_type = (string) ( $manifest['source_type'] ?? '' );
+        // Legacy records without an absolute source must still resolve through
+        // the current site's attachment record, not a manifest-relative path.
+        $source = $manifest['source_path'] ?? '';
+        if ( '' === $source ) { $source = get_attached_file( $attachment_id, true ); }
+        return $this->approved_source( $source );
+    }
 
-        if ( 'uploads-relative' === $source_type ) {
-            $uploads = wp_get_upload_dir();
-            $path    = ! empty( $uploads['basedir'] ) ? untrailingslashit( (string) $uploads['basedir'] ) . '/' . ltrim( $source, '/' ) : '';
-        } elseif ( 'content-relative' === $source_type ) {
-            $path = untrailingslashit( WP_CONTENT_DIR ) . '/' . ltrim( $source, '/' );
-        } elseif ( 'attachment' === $source_type ) {
-            $path = get_attached_file( absint( $manifest['id'] ?? 0 ), true );
-        } else {
-            $path = '';
-        }
-
-        return is_string( $path ) && is_readable( $path ) ? $path : null;
+    private function approved_source( $path ): ?string {
+        if ( ! is_string( $path ) || '' === $path || str_contains( $path, "\0" ) ) { return null; }
+        $uploads = wp_get_upload_dir();
+        $root = empty( $uploads['basedir'] ) ? false : realpath( (string) $uploads['basedir'] );
+        $file = realpath( $path );
+        if ( false === $root || false === $file || ! is_file( $file ) || ! is_readable( $file ) ) { return null; }
+        $prefix = rtrim( wp_normalize_path( $root ), '/' ) . '/';
+        $file = wp_normalize_path( $file );
+        if ( ! str_starts_with( $file, $prefix ) ) { return null; }
+        if ( is_multisite() && preg_match( '#^(sites|blogs\.dir)/[0-9]+/#', substr( $file, strlen( $prefix ) ) ) ) { return null; }
+        if ( $this->paths->is_inside_any_cache( $file ) || $this->paths->is_inside_any_private( $file ) ) { return null; }
+        return $file;
     }
 
     public function source_url( array $manifest ): ?string {
