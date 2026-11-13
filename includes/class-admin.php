@@ -62,12 +62,15 @@ final class Admin {
                     <tr><td>WebP output</td><td><?php echo $webp ? 'Supported' : 'Unavailable'; ?></td></tr>
                     <tr><td>AVIF output</td><td><?php echo $avif ? 'Supported' : 'Unavailable'; ?></td></tr>
                     <tr><td>Filesystem layout</td><td><strong>Sharded for large media libraries</strong></td></tr>
-                    <tr><td>Cached image hot path</td><td><strong>Static file — no WordPress bootstrap, MediaFlow DB query, or resize</strong></td></tr>
-                    <tr><td>Auto-LQIP background worker</td><td><?php echo defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ? 'WP-Cron spawning disabled — use a real server cron or optional pre-warm.' : 'WP-Cron available — queue drains one image per bounded worker run.'; ?></td></tr>
+                    <tr><td>Cached image hot path</td><td><strong>Not verified</strong> — confirm a warm hit in origin access logs with no PHP upstream.</td></tr>
+                    <tr><td>Auto-LQIP background worker</td><td><?php echo defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ? 'WP-Cron spawning disabled — use a real server cron or optional pre-warm.' : 'WP-Cron spawning enabled — queue drain not verified.'; ?></td></tr>
                     <tr><td>Cache statistics</td><td>Not scanned automatically; MediaFlow avoids large directory enumeration in wp-admin.</td></tr>
                 </tbody>
             </table>
 
+            <h2>Deployment verification</h2>
+            <p>Private and legacy HTTP paths: <strong>Not verified</strong>. Verify origin and CDN separately; filesystem writability is not an access check.</p>
+            <p>Warm cache headers: <strong>Not verified</strong>. Check a generated derivative for public immutable caching and a fallback for no-store.</p>
             <h2>Settings</h2>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="max-width:900px">
                 <input type="hidden" name="action" value="mediaflow_save_settings">
@@ -182,6 +185,15 @@ final class Admin {
                         <td><input id="mediaflow-candidates" type="number" min="2" max="6" name="max_srcset_candidates" value="<?php echo esc_attr( (string) $settings['max_srcset_candidates'] ); ?>"></td>
                     </tr>
                 </table>
+                <h3>Newsroom upload policy</h3>
+                <p><label><input type="checkbox" name="newsroom_enabled" value="1" <?php checked( ! empty( $settings['newsroom_enabled'] ) ); ?>> Enforce on WordPress upload and sideload hooks</label></p>
+                <fieldset><legend>Allowed image types</legend>
+                <?php foreach ( array( 'image/jpeg' => 'JPEG', 'image/webp' => 'WebP', 'image/png' => 'PNG', 'image/avif' => 'AVIF' ) as $mime => $label ) : ?>
+                    <label><input type="checkbox" name="newsroom_mimes[]" value="<?php echo esc_attr( $mime ); ?>" <?php checked( in_array( $mime, $this->settings->newsroom_mimes(), true ) ); ?>> <?php echo esc_html( $label ); ?></label>
+                <?php endforeach; ?>
+                </fieldset>
+                <p><label>Maximum bytes <input type="number" min="1" max="100000000" name="newsroom_max_bytes" value="<?php echo esc_attr( (string) $settings['newsroom_max_bytes'] ); ?>"></label></p>
+                <p>Effective: <?php echo $this->settings->newsroom_enabled() ? 'Enabled' : 'Disabled'; ?> · <?php echo esc_html( implode( ', ', $this->settings->newsroom_mimes() ) ); ?> · <?php echo esc_html( (string) $this->settings->newsroom_max_bytes() ); ?> bytes. An empty format selection restores JPEG and WebP. Browser optimization is independent and outputs WebP only. Constants in wp-config.php override the saved enable flag and byte limit.</p>
                 <?php submit_button( 'Save MediaFlow Settings' ); ?>
             </form>
 
