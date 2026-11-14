@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.0-beta.5 — Auto-LQIP compatibility fix
 
 - Prevents front-end PHP fatals when the host disables `link()`. Missing Auto-LQIP previews fall back to the gradient, while existing previews remain available.
 
