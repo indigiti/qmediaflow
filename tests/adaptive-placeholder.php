@@ -90,6 +90,23 @@ $manifest = array(
     'lqip_extension' => 'webp',
 );
 
+if ( in_array( '--without-link', $argv, true ) ) {
+    if ( function_exists( 'link' ) ) { $fail( 'run this regression with link disabled' ); }
+    $signature = $settings->lqip_signature();
+    if ( false !== $store->queue_lqip( 12345, $manifest ) ) { $fail( 'queue must decline safely without link' ); }
+    if ( is_file( $paths->lqip_queue_path( 12345, 'abcdef123456', $signature ) ) || ! empty( $GLOBALS['mf_scheduled'] ) ) {
+        $fail( 'disabled link must not create a marker or schedule work' );
+    }
+    if ( '' !== $store->lqip_url( 12345, $manifest ) ) { $fail( 'cold preview must use the gradient without link' ); }
+    $warm = $store->lqip_path_for_request( 12345, 'abcdef123456', $signature, 'webp' );
+    if ( ! wp_mkdir_p( dirname( $warm ) ) || false === file_put_contents( $warm, 'preview fixture' ) ) { $fail( 'cannot create warm preview fixture' ); }
+    clearstatcache( true, $warm );
+    if ( '' === $store->lqip_url( 12345, $manifest ) ) { $fail( 'warm preview should stay available without link' ); }
+    $pass( 'Auto-LQIP degrades safely without link and preserves warm previews' );
+    passthru( 'rm -rf ' . escapeshellarg( $root ) );
+    exit( 0 );
+}
+
 $url = $store->lqip_url( 12345, $manifest );
 if ( ! str_contains( $url, '/lqip/abcdef123456/' . $settings->lqip_signature() . '.webp' ) ) {
     $fail( 'Auto-LQIP URL must include source revision and LQIP settings signature' );
