@@ -332,6 +332,11 @@ final class Manifest_Store {
         if ( ! preg_match( '/^[a-f0-9]{12}$/', $revision ) ) {
             return '';
         }
+        // Keep warm previews, but don't emit a cold URL when the runtime
+        // cannot publish a queue marker.
+        if ( ! function_exists( 'link' ) && ! $this->lqip_file_ready( $attachment_id, $manifest, $signature ) ) {
+            return '';
+        }
         return $this->paths->lqip_url( $attachment_id, $revision, $signature, $extension );
     }
 
@@ -377,6 +382,10 @@ final class Manifest_Store {
             if ( $existing ) { $this->schedule_lqip_worker( max( time() + 1, absint( $existing['retry_after'] ?? 0 ) ) ); }
             return false;
         }
+        // PHP may remove link() via disable_functions. Preserve no-clobber
+        // publication; fall back to the gradient instead of writing a partial marker.
+        if ( ! function_exists( 'link' ) ) { return false; }
+
         $now = time();
 
         $marker = array(
@@ -399,7 +408,7 @@ final class Manifest_Store {
         try {
             $json = wp_json_encode( $marker, JSON_UNESCAPED_SLASHES );
             if ( ! is_string( $json ) || @file_put_contents( $tmp, $json ) !== strlen( $json )
-                || ! @chmod( $tmp, 0600 ) || ! @link( $tmp, $queue ) ) { return false; }
+                || ! @chmod( $tmp, 0600 ) || ! @\link( $tmp, $queue ) ) { return false; }
         } finally {
             @unlink( $tmp );
         }

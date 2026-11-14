@@ -1,3 +1,7 @@
+## Unreleased
+
+- Prevents front-end PHP fatals when the host disables `link()`. Missing Auto-LQIP previews fall back to the gradient, while existing previews remain available.
+
 ## 0.3.0-beta.4 — Dashboard rendering fix
 
 - Registers the QMediaFlow Tools page only once and removes the obsolete page-wide branding replacement. The existing Tools URL and settings remain unchanged.

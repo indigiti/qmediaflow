@@ -93,7 +93,8 @@ def main():
     assert 'wp_client_side_media_processing_enabled' in upload
     assert 'wp_get_image_mime( $tmp )' in upload and '@filesize( $tmp )' in upload
     assert 'QMEDIAFLOW_NEWSROOM_UPLOAD_POLICY' in settings and 'newsroom_mimes()' in upload
-    assert '@link( $tmp, $queue )' in manifest
+    assert "function_exists( 'link' )" in manifest
+    assert r'@\link( $tmp, $queue )' in manifest
     assert 'createImageBitmap' in upload_js and "imageOrientation: 'from-image'" in upload_js
     assert 'X-MediaFlow-Upload' in upload_js and 'transformFormData' in upload_js
     assert 'OffscreenCanvas' in upload_worker and 'bestQuality' in upload_worker
