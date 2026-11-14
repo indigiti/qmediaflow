@@ -156,6 +156,7 @@ final class Resolver {
     }
 
     public function variant_for( int $attachment_id, array $manifest, array $spec ): ?Variant {
+        if ( ! Manifest_Store::public_media_allowed( $attachment_id ) ) { return null; }
         $width   = max( 1, absint( $spec['width'] ?? 0 ) );
         $height  = max( 0, absint( $spec['height'] ?? 0 ) );
         $crop    = ! empty( $spec['crop'] ) && $height > 0;
