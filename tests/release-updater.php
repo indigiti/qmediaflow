@@ -21,3 +21,12 @@ check( Release_Updater::select( array( $r ), '1.0.0', false ), false );
 $r['assets'] = array();
 check( Release_Updater::select( array( $r ), '1.0.0', false ), false );
 echo "PASS: release channels, version ordering and package validation\n";
+
+$tmp = tempnam( sys_get_temp_dir(), 'qmf-test-' );
+try {
+    file_put_contents( $tmp, 'release fixture' );
+    $hash = hash_file( 'sha256', $tmp );
+    check( Release_Updater::checksum_matches( $tmp, $hash . "  qmediaflow.zip\n" ), true );
+    check( Release_Updater::checksum_matches( $tmp, $hash . "  wrong.zip\n" ), false );
+    check( Release_Updater::checksum_matches( $tmp, str_repeat( '0', 64 ) . "  qmediaflow.zip\n" ), false );
+} finally { unlink( $tmp ); }
