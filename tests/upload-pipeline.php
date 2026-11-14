@@ -4,6 +4,7 @@
  * Does not load WordPress or perform browser image encoding.
  */
 
+function apply_filters( $name, $value ) { return 'qmediaflow_newsroom_exempt_sideload' === $name && ! empty( $GLOBALS['qmf_exempt'] ) ? true : $value; }
 function absint( $value ): int { return abs( (int) $value ); }
 function sanitize_text_field( $value ): string { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
@@ -75,3 +76,11 @@ $result = $optimizer->validate_sideload( $jpeg );
 file_put_contents( $webp, 'x' );
 $result = $optimizer->validate_upload( $valid );
 ! empty( $result['error'] ) ? $pass( 'excluded MIME rejected even below configured ceiling' ) : $fail( 'excluded format was accepted' );
+
+$GLOBALS['qmf_exempt'] = true;
+unset( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] );
+$result = $optimizer->validate_sideload( $valid );
+empty( $result['error'] ) ? $pass( 'trusted exemption allows excluded MIME on sideload' ) : $fail( 'trusted exemption did not apply' );
+$_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] = '1';
+$result = $optimizer->validate_sideload( $valid );
+! empty( $result['error'] ) ? $pass( 'browser-marked sideload cannot use importer exemption' ) : $fail( 'browser upload bypassed policy' );
