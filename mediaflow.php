@@ -2,7 +2,7 @@
 /**
  * Plugin Name: QMediaFlow
  * Description: Browser-first WordPress image optimization with adaptive, on-demand responsive delivery and a disposable static cache.
- * Version:     0.3.0-beta.3
+ * Version:     0.3.0-beta.4
  * Author:      QMediaFlow
  * License:     GPL-2.0-or-later
  * Text Domain: qmediaflow
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * The MediaFlow namespace, hooks, actions, storage paths and constants remain
  * supported as compatibility identifiers so existing sites do not break.
  */
-define( 'QMEDIAFLOW_VERSION', '0.3.0-beta.3' );
+define( 'QMEDIAFLOW_VERSION', '0.3.0-beta.4' );
 define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
 define( 'QMEDIAFLOW_FILE', __FILE__ );
 define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );
@@ -83,7 +83,6 @@ require_once QMEDIAFLOW_DIR . 'includes/class-responsive.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-admin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
-require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-release-updater.php';
 \MediaFlow\Release_Updater::register();
 
@@ -93,7 +92,6 @@ add_action(
     'plugins_loaded',
     static function (): void {
         MediaFlow\Plugin::instance()->boot();
-        MediaFlow\Branding::register();
     },
     1
 );
