@@ -106,3 +106,28 @@ For recovery, `wp mediaflow purge-attachment <id>` previews the origin path;
 append `--apply` to remove that attachment's generated origin cache. This does
 not delete the source, clear the CDN, revoke access or prevent regeneration.
 Use the correct site with `--url` on multisite.
+
+
+## Public derivative eligibility
+
+Publicly viewable, non-password-protected parent posts may use QMediaFlow's
+static derivatives. Unattached media require `_qmediaflow_visibility=public`.
+Set that meta to `private` to opt out even if the parent is public. Sites that
+protect media independently of the parent can set
+`QMEDIAFLOW_REQUIRE_PUBLIC_OPT_IN` to true and explicitly approve public
+attachments, or return false from `qmediaflow_public_media_allowed`.
+The filter is a server policy and must not depend on the current viewer.
+
+Visibility changes handled by WordPress remove the attachment's origin cache
+and fire `qmediaflow_public_media_revoked` (attachment ID, derivative URL
+prefix, site ID). Custom protection systems must call
+`Plugin::instance()->revoke_public_media( $id )` on revocation and purge
+matching CDN assets and cached HTML. Already delivered browser copies cannot
+be recalled. Previously generated derivatives must be inventoried and purged
+before rollout; static hits do not consult PHP. This does not protect the
+original WordPress upload URL or verify isolation of the private runtime.
+
+A trusted importer may attach a temporary `qmediaflow_newsroom_exempt_sideload`
+filter returning true around its specific sideload call and remove it in a
+finally block. Do not install a global exemption or drive it from request
+input. It skips only QMediaFlow's check, not WordPress core validation.
