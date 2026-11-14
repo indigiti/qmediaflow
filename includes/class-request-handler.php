@@ -120,6 +120,7 @@ final class Request_Handler {
     }
 
     private function fallback_to_source( array $manifest, string $reason ): bool {
+        if ( ! Manifest_Store::public_media_allowed( (int) ( $manifest['id'] ?? 0 ) ) ) { return false; }
         $source_url = $this->manifests->source_url( $manifest );
         if ( ! $source_url ) {
             return false;
