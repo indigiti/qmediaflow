@@ -1,3 +1,8 @@
+## 0.3.0-beta.2 — Dashboard testing release
+
+- Adds the redesigned QMediaFlow workspace under Tools → QMediaFlow, with responsive navigation, status cards, and quick actions.
+- Testing channel only; verify in-place upgrade and dashboard behavior on WordPress staging.
+
 ## 0.3.0-beta.1 — First GitHub testing release
 
 - Adds stable and opt-in testing update channels, configurable newsroom upload checks, and public derivative eligibility controls.
