@@ -71,7 +71,10 @@ def main():
     assert '/lqip/' in paths and 'generation-locks/slot-' in paths
     assert '__mediaflow-lqip-pending.svg' in paths and 'no-store, max-age=0' in paths
     main=(ROOT/'mediaflow.php').read_text()
-    assert "QMEDIAFLOW_VERSION', '0.2.9'" in main
+    import re
+    version = re.search(r"QMEDIAFLOW_VERSION', '([^']+)'", main)
+    header = re.search(r"(?m)^ \* Version:\s*(\S+)", main)
+    assert version and header and version[1] == header[1]
     assert "MEDIAFLOW_VERSION', QMEDIAFLOW_VERSION" in main
     assert "MEDIAFLOW_ROUTING_SCHEMA_VERSION', QMEDIAFLOW_ROUTING_SCHEMA_VERSION" in main and '$routing_version' in paths
     assert 'qmediaflow_url' in main and 'qmediaflow_image' in main

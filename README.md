@@ -229,3 +229,30 @@ The highest-impact next work is:
 ## Current development status
 
 QMediaFlow remains a staging/development build rather than a blanket production-capacity claim. Its architecture already includes regression and synthetic scalability checks, but production rollout should still be validated against the actual theme, plugin set, browser mix, WordPress configuration, encoder stack, web server and storage platform.
+
+
+## GitHub release updates
+
+Install the official `qmediaflow.zip` once with the plugin at
+`wp-content/plugins/mediaflow/mediaflow.php`. The updater intentionally does
+not offer upgrades to copies installed under a different folder: replacing a
+differently named directory can break the active plugin path. Back up and
+normalize an existing installation before enabling updates.
+
+**Stable (default):** WordPress checks the latest stable GitHub release.
+**Testing (opt-in):** add `define( 'QMEDIAFLOW_UPDATE_CHANNEL', 'testing' );`
+to staging's wp-config.php. Testing considers newer prereleases and stable
+releases, choosing the highest eligible version among recent releases.
+Removing the constant switches back to stable without downgrading the
+installed version. In both channels use WordPress's **Enable auto-updates**
+control if you want unattended installation; otherwise use the manual update
+button. A push to main alone never distributes an update.
+
+To publish, set both the plugin header and runtime version to the release
+version, then push a matching tag after review. Use `vX.Y.Z` for stable or
+`vX.Y.Z-beta.N` (also alpha or RC) for testing. The tagged workflow runs
+contracts, packages the plugin, verifies the archive, then publishes it and a
+SHA-256 checksum. Protect release tags and keep PHP/WordPress compatibility
+metadata in sync if the minimum versions change. WordPress download and
+in-place activation should be smoke-tested on staging before enabling
+production auto-updates.

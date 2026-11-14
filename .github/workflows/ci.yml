@@ -8,6 +8,7 @@ on:
       - 'feature/**'
       - 'fix/**'
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -48,3 +49,6 @@ jobs:
 
       - name: Browser upload contract
         run: node tests/upload-browser-contract.js
+
+      - name: Release updater contracts
+        run: php tests/release-updater.php

@@ -1,0 +1,52 @@
+name: QMediaFlow Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build and verify plugin package
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|RC)\.[0-9]+)?$ ]]
+          version="${tag#v}"
+          header="$(sed -nE 's/^ \* Version:[[:space:]]+([^[:space:]]+).*/\1/p' mediaflow.php)"
+          runtime="$(sed -nE "s/^define\( 'QMEDIAFLOW_VERSION', '([^']+)' \);$/\1/p" mediaflow.php)"
+          [[ "$version" == "$header" && "$version" == "$runtime" ]]
+          stage="$(mktemp -d)"
+          mkdir "$stage/mediaflow"
+          cp -r mediaflow.php uninstall.php readme.txt includes assets "$stage/mediaflow/"
+          (cd "$stage" && zip -qr "$GITHUB_WORKSPACE/qmediaflow.zip" mediaflow)
+          unzip -tq qmediaflow.zip
+          unzip -q qmediaflow.zip -d "$stage/verify"
+          find "$stage/verify" -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          sha256sum qmediaflow.zip > qmediaflow.zip.sha256
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          gh release create "$GITHUB_REF_NAME" qmediaflow.zip qmediaflow.zip.sha256 --verify-tag --generate-notes "${flags[@]}"
