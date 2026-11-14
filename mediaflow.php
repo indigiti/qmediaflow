@@ -2,7 +2,7 @@
 /**
  * Plugin Name: QMediaFlow
  * Description: Browser-first WordPress image optimization with adaptive, on-demand responsive delivery and a disposable static cache.
- * Version:     0.2.9
+ * Version:     0.3.0-beta.1
  * Author:      QMediaFlow
  * License:     GPL-2.0-or-later
  * Text Domain: qmediaflow
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * The MediaFlow namespace, hooks, actions, storage paths and constants remain
  * supported as compatibility identifiers so existing sites do not break.
  */
-define( 'QMEDIAFLOW_VERSION', '0.2.9' );
+define( 'QMEDIAFLOW_VERSION', '0.3.0-beta.1' );
 define( 'QMEDIAFLOW_ROUTING_SCHEMA_VERSION', '4' );
 define( 'QMEDIAFLOW_FILE', __FILE__ );
 define( 'QMEDIAFLOW_DIR', plugin_dir_path( __FILE__ ) );

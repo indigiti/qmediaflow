@@ -1,3 +1,8 @@
+## 0.3.0-beta.1 — First GitHub testing release
+
+- Adds stable and opt-in testing update channels, configurable newsroom upload checks, and public derivative eligibility controls.
+- Prerelease for staging; in-place WordPress updates and origin/CDN revocation still require site verification.
+
 ## 0.2.9 — QMediaFlow identity + compatibility layer
 
 - Renamed the public product/plugin identity from MediaFlow to **QMediaFlow**.

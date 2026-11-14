@@ -3,6 +3,8 @@ name: QMediaFlow Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['.github/testing-release-tag']
 
 permissions:
   contents: read
@@ -26,6 +28,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF_TYPE" == branch ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]]
+            tag="$(cat .github/testing-release-tag)"
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|RC)\.[0-9]+$ ]]
+          fi
+          printf 'QMEDIAFLOW_RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
           [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|RC)\.[0-9]+)?$ ]]
           version="${tag#v}"
           header="$(sed -nE 's/^ \* Version:[[:space:]]+([^[:space:]]+).*/\1/p' mediaflow.php)"
@@ -45,8 +53,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          tag="$QMEDIAFLOW_RELEASE_TAG"
+          if [[ "$GITHUB_REF_TYPE" == branch ]]; then
+            # The default token does not trigger a second tag-push workflow.
+            # Tag the already-tested commit and continue publishing here.
+            existing="$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" --jq '.[] | select(.ref == "refs/tags/'"$tag"'") | .object.sha')"
+            if [[ -z "$existing" ]]; then
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" --silent
+            else
+              [[ "$existing" == "$GITHUB_SHA" ]]
+            fi
+          fi
           flags=()
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+          if [[ "$tag" == *-* ]]; then
             flags+=(--prerelease --latest=false)
           fi
-          gh release create "$GITHUB_REF_NAME" qmediaflow.zip qmediaflow.zip.sha256 --verify-tag --generate-notes "${flags[@]}"
+          gh release create "$tag" qmediaflow.zip qmediaflow.zip.sha256 --verify-tag --generate-notes "${flags[@]}"
