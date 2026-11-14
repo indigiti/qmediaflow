@@ -79,9 +79,12 @@ def main():
     assert "MEDIAFLOW_ROUTING_SCHEMA_VERSION', QMEDIAFLOW_ROUTING_SCHEMA_VERSION" in main and '$routing_version' in paths
     assert 'qmediaflow_url' in main and 'qmediaflow_image' in main
     assert "add_command( 'qmediaflow'" in main
-    branding=(ROOT/'includes/class-branding.php').read_text()
-    assert "'QMediaFlow'" in branding and "str_replace( 'MediaFlow', 'QMediaFlow'" in branding
-    print('PASS: v0.2.9 QMediaFlow compatibility and branding contracts')
+    admin = (ROOT/'includes/class-admin.php').read_text()
+    sources = [main] + [p.read_text() for p in (ROOT/'includes').glob('*.php')]
+    assert sum(source.count('add_management_page(') for source in sources) == 1
+    assert "'QMediaFlow'" in admin and "->admin()->render()" in admin
+    assert all('load-tools_page_mediaflow' not in source for source in sources)
+    print('PASS: QMediaFlow compatibility and single dashboard registration')
     upload=(ROOT/'includes/class-upload-optimizer.php').read_text()
     upload_js=(ROOT/'assets/js/mediaflow-upload.js').read_text()
     upload_worker=(ROOT/'assets/js/mediaflow-upload-worker.js').read_text()

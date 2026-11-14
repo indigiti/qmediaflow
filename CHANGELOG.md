@@ -1,3 +1,7 @@
+## 0.3.0-beta.4 — Dashboard rendering fix
+
+- Registers the QMediaFlow Tools page only once and removes the obsolete page-wide branding replacement. The existing Tools URL and settings remain unchanged.
+
 ## 0.3.0-beta.3 — GitHub update controls
 
 - Adds a dashboard panel for release status, channel selection and manual release checks.
