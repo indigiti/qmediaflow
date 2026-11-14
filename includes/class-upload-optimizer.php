@@ -89,6 +89,9 @@ final class Upload_Optimizer {
         if ( ! empty( $file['error'] ) ) { return $file; }
         $policy = $this->settings->newsroom_enabled();
         $marked = '1' === ( $_SERVER['HTTP_X_MEDIAFLOW_UPLOAD'] ?? '' );
+        // Server integrations may opt out for a specific trusted sideload call.
+        // Neither a request parameter nor the browser marker grants this exemption.
+        if ( $policy && $sideload && ! $marked && true === apply_filters( 'qmediaflow_newsroom_exempt_sideload', false ) ) { return $file; }
         $optimized = $this->browser_pipeline_enabled() && ( ! $sideload || $marked );
         if ( ! $policy && ! $optimized ) { return $file; }
 

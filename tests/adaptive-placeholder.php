@@ -10,6 +10,15 @@ define( 'MEDIAFLOW_MAX_SOURCE_PIXELS', 24000000 );
 define( 'MEDIAFLOW_MAX_OUTPUT_PIXELS', 8000000 );
 
 final class WP_Error { public function __construct( public string $code = '', public string $message = '' ) {} }
+final class WP_Post {
+    public function __construct( public string $post_type, public string $post_status, public string $post_password = '', public int $post_parent = 0 ) {}
+}
+$GLOBALS['qmf_parent'] = new WP_Post( 'post', 'publish' );
+$GLOBALS['qmf_visibility'] = '';
+function get_post( int $id ): ?WP_Post { return 12345 === $id ? new WP_Post( 'attachment', 'inherit', '', 1 ) : ( 1 === $id ? $GLOBALS['qmf_parent'] : null ); }
+function get_post_meta( $id, $key, $single ): string { return $GLOBALS['qmf_visibility']; }
+function is_post_publicly_viewable( WP_Post $post ): bool { return 'publish' === $post->post_status; }
+function apply_filters( $name, $value, ...$args ) { return $value; }
 function is_wp_error( $value ): bool { return $value instanceof WP_Error; }
 function absint( $value ): int { return abs( (int) $value ); }
 function is_multisite(): bool { return false; }
@@ -95,6 +104,17 @@ if ( ! is_readable( $queue ) ) { $fail( 'queue marker should exist in private ru
 $data = json_decode( (string) file_get_contents( $queue ), true );
 if ( ! is_array( $data ) || 'queued' !== ( $data['state'] ?? '' ) ) { $fail( 'queue marker state should be queued' ); }
 $pass( 'filesystem anti-stampede queue deduplicates first-visit generation' );
+$GLOBALS['qmf_parent']->post_password = 'protected';
+if ( \MediaFlow\Manifest_Store::public_media_allowed( 12345 ) ) { $fail( 'password-protected parent allowed' ); }
+$GLOBALS['qmf_parent']->post_password = '';
+$GLOBALS['qmf_parent']->post_status = 'private';
+if ( \MediaFlow\Manifest_Store::public_media_allowed( 12345 ) ) { $fail( 'private parent allowed' ); }
+$GLOBALS['qmf_parent']->post_status = 'publish';
+$GLOBALS['qmf_visibility'] = 'private';
+if ( \MediaFlow\Manifest_Store::public_media_allowed( 12345 ) ) { $fail( 'explicitly protected media allowed' ); }
+$GLOBALS['qmf_visibility'] = '';
+if ( ! \MediaFlow\Manifest_Store::public_media_allowed( 12345 ) ) { $fail( 'public attachment refused' ); }
+$pass( 'public eligibility denies protected parent and explicit opt-out' );
 
 $fixture = dirname( __DIR__ ) . '/tests/fixtures/plain.png';
 $manifest['source_path'] = $fixture;

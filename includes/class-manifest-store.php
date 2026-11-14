@@ -12,6 +12,31 @@ final class Manifest_Store {
         $this->settings = $settings;
     }
 
+    /**
+     * Public static derivatives must never depend on the current viewer's access.
+     * Integrations that protect otherwise public uploads can deny through the filter.
+     */
+    public static function public_media_allowed( int $attachment_id ): bool {
+        $post = get_post( $attachment_id );
+        if ( ! $post || 'attachment' !== $post->post_type || ! in_array( $post->post_status, array( 'inherit', 'publish' ), true ) || '' !== $post->post_password ) {
+            return false;
+        }
+        $policy = (string) get_post_meta( $attachment_id, '_qmediaflow_visibility', true );
+        if ( 'private' === $policy ) { return false; }
+        if ( $post->post_parent ) {
+            $parent = get_post( (int) $post->post_parent );
+            if ( ! $parent || ! self::is_public_parent( $parent ) ) { return false; }
+        } elseif ( 'public' !== $policy ) {
+            return false;
+        }
+        if ( defined( 'QMEDIAFLOW_REQUIRE_PUBLIC_OPT_IN' ) && QMEDIAFLOW_REQUIRE_PUBLIC_OPT_IN && 'public' !== $policy ) { return false; }
+        return true === apply_filters( 'qmediaflow_public_media_allowed', true, $attachment_id, $post );
+    }
+
+    public static function is_public_parent( \WP_Post $post ): bool {
+        return '' === $post->post_password && is_post_publicly_viewable( $post );
+    }
+
     public function get( int $attachment_id ): ?array {
         if ( isset( $this->runtime[ $attachment_id ] ) ) {
             return $this->runtime[ $attachment_id ];
@@ -207,6 +232,7 @@ final class Manifest_Store {
             return $existing;
         }
 
+        $allow_lqip = $allow_lqip && self::public_media_allowed( $attachment_id );
         $placeholder = '';
         $lqip_state  = 'disabled';
         $lqip_ext    = '';
@@ -330,7 +356,7 @@ final class Manifest_Store {
      * worker drains the queue in bounded one-image runs.
      */
     public function queue_lqip( int $attachment_id, ?array $manifest = null ): bool {
-        if ( 'auto' !== $this->settings->placeholder_mode() || $attachment_id < 1 ) {
+        if ( 'auto' !== $this->settings->placeholder_mode() || $attachment_id < 1 || ! self::public_media_allowed( $attachment_id ) ) {
             return false;
         }
         $manifest = $manifest ?: $this->ensure_for_attachment( $attachment_id );
@@ -480,7 +506,7 @@ final class Manifest_Store {
     }
 
     private function generate_external_lqip( int $attachment_id, array $manifest, string $signature ): bool {
-        if ( ! hash_equals( $this->settings->lqip_signature(), $signature ) ) { return false; }
+        if ( ! self::public_media_allowed( $attachment_id ) || ! hash_equals( $this->settings->lqip_signature(), $signature ) ) { return false; }
         $revision = (string) ( $manifest['revision'] ?? '' );
         if ( ! preg_match( '/^[a-f0-9]{12}$/', $revision ) ) { return false; }
         $extension = $this->lqip_extension();
@@ -672,6 +698,7 @@ final class Manifest_Store {
         $extension = (string) ( $asset['extension'] ?? $this->lqip_extension() );
         $bytes     = (string) ( $asset['bytes'] ?? '' );
         if ( '' === $bytes ) { return false; }
+        if ( ! self::public_media_allowed( $attachment_id ) ) { return false; }
         return $this->write_atomic_binary( $this->paths->lqip_path( $attachment_id, $revision, $signature, $extension ), $bytes );
     }
 

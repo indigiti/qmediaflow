@@ -20,7 +20,9 @@ try {
             $assert( $paths->site_id() === get_current_blog_id(), 'Service context follows site switch' );
             $key = $plugin->settings()->signing_key();
             $assert( strlen( $key ) >= 32, 'Signing storage is ready' );
-            $variant = $plugin->resolver()->variant_for( 123, $manifest, array( 'width' => 640, 'height' => 0, 'format' => 'jpeg', 'quality' => 82 ) );
+            $unsigned = new \MediaFlow\Variant( 640, 0, false, 82, 'jpeg', '' );
+            $sign = new ReflectionMethod( $plugin->resolver(), 'signature' );
+            $variant = $unsigned->with_signature( $sign->invoke( $plugin->resolver(), 123, $manifest['revision'], $plugin->settings()->cache_namespace(), $unsigned ) );
             $assert( $variant instanceof \MediaFlow\Variant, 'Can sign variant' );
             $contexts[] = array( 'id' => get_current_blog_id(), 'cache' => $paths->attachment_root_dir( 123 ), 'manifest' => $paths->manifest_path( 123 ), 'settings' => $paths->settings_path(), 'secret' => $paths->secret_path(), 'locks' => $paths->processing_lock_dir(), 'key' => $key, 'variant' => $variant, 'namespace' => $plugin->settings()->cache_namespace(), 'resolver' => $plugin->resolver(), 'url' => $plugin->resolver()->url( 123, $manifest, $variant ) );
         } finally { restore_current_blog(); }

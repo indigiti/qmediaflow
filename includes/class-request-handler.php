@@ -68,6 +68,10 @@ final class Request_Handler {
             $this->fail( 403, 'Invalid MediaFlow transformation signature.' );
         }
 
+        if ( ! Manifest_Store::public_media_allowed( $attachment_id ) ) {
+            $this->fail( 404, 'QMediaFlow image is unavailable.' );
+        }
+
         $manifest = $this->manifests->get( $attachment_id );
         if ( ! $manifest ) {
             // One-time recovery for pre-MediaFlow/legacy attachments only.
@@ -116,6 +120,7 @@ final class Request_Handler {
     }
 
     private function fallback_to_source( array $manifest, string $reason ): bool {
+        if ( ! Manifest_Store::public_media_allowed( (int) ( $manifest['id'] ?? 0 ) ) ) { return false; }
         $source_url = $this->manifests->source_url( $manifest );
         if ( ! $source_url ) {
             return false;
