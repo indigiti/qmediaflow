@@ -23,6 +23,9 @@ final class Processor {
      * @return string|\WP_Error Final file path or error.
      */
     public function generate( int $attachment_id, array $manifest, Variant $variant, ?string $namespace = null ) {
+        if ( ! Manifest_Store::public_media_allowed( $attachment_id ) ) {
+            return new \WP_Error( 'mediaflow_protected', 'QMediaFlow does not generate public variants for protected media.' );
+        }
         $target = $this->resolver->path( $attachment_id, $manifest, $variant, $namespace );
         if ( is_readable( $target ) ) {
             return $target;
@@ -106,6 +109,11 @@ final class Processor {
             if ( ! is_readable( $saved_path ) ) {
                 @unlink( $saved_path );
                 return new \WP_Error( 'mediaflow_save', 'MediaFlow image editor did not create an output file.' );
+            }
+
+            if ( ! Manifest_Store::public_media_allowed( $attachment_id ) ) {
+                @unlink( $saved_path );
+                return new \WP_Error( 'mediaflow_protected', 'QMediaFlow image visibility changed during generation.' );
             }
 
             if ( ! @rename( $saved_path, $target ) ) {
