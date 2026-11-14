@@ -1,3 +1,9 @@
+## 0.3.0-beta.3 — GitHub update controls
+
+- Adds a dashboard panel for release status, channel selection and manual release checks.
+- Verifies the official release ZIP against its SHA-256 checksum on supported GitHub updates.
+- Testing only. Verify the WordPress upgrade and checksum handling on staging before enabling production auto-updates.
+
 ## 0.3.0-beta.2 — Dashboard testing release
 
 - Adds the redesigned QMediaFlow workspace under Tools → QMediaFlow, with responsive navigation, status cards, and quick actions.
