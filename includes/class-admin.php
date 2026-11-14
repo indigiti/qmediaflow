@@ -13,6 +13,7 @@ final class Admin {
     public function hooks(): void {
         add_action( 'admin_post_mediaflow_check_encoding', static fn() => Plugin::instance()->admin()->check_encoding() );
         add_action( 'add_meta_boxes_post', array( $this, 'add_editor_checks' ) );
+        add_action( 'admin_post_qmediaflow_release_controls', array( $this, 'release_controls' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'dashboard_assets' ) );
         add_action( 'admin_menu', static fn() => Plugin::instance()->admin()->menu() );
         add_action( 'admin_post_mediaflow_save_settings', static fn() => Plugin::instance()->admin()->save_settings() );
@@ -71,7 +72,7 @@ final class Admin {
         $cache_writable   = is_writable( $this->paths->cache_dir() );
         $private_writable = is_writable( $this->paths->private_dir() );
         $signing_ready = '' !== $this->settings->signing_key();
-        $channel = defined( 'QMEDIAFLOW_UPDATE_CHANNEL' ) && 'testing' === QMEDIAFLOW_UPDATE_CHANNEL ? 'Testing' : 'Stable';
+        $channel = ucfirst( Release_Updater::channel() );
         $navigation = array(
             'overview' => array( 'dashboard', 'Overview' ),
             'runtime' => array( 'performance', 'Runtime & delivery' ),
@@ -98,7 +99,7 @@ final class Admin {
                     <span><strong>QMediaFlow</strong><span class="qmf-divider">/</span>Workspace</span>
                     <div class="qmf-top-actions">
                         <span class="qmf-site"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></span>
-                        <a class="qmf-action" href="https://github.com/indigiti/qmediaflow/releases">GitHub updates</a>
+                        <?php if ( Release_Updater::can_manage() ) : ?><a class="qmf-action" href="#qmf-releases">GitHub updates</a><?php endif; ?>
                         <a class="qmf-action" href="#qmf-settings">Settings</a>
                     </div>
                 </header>
@@ -357,11 +358,86 @@ final class Admin {
                 <p class="description">O(1) purge: new HTML immediately uses a fresh cache namespace. Existing immutable files stay valid for already-cached pages and can be removed later by maintenance tooling; wp-admin never recursively deletes millions of files.</p>
             </form>
                     </section>
+                    <?php if ( Release_Updater::can_manage() ) { $this->render_releases(); } ?>
                     <p class="qmf-footer">QMediaFlow reports local configuration and capabilities. Traffic, cache hit rates, and CDN health are not measured here.</p>
                 </div>
             </div>
         </div>
         <?php
+    }
+
+    private function render_releases(): void {
+        $channel = Release_Updater::channel();
+        $locked = defined( 'QMEDIAFLOW_UPDATE_CHANNEL' );
+        $report = Release_Updater::report();
+        $release = $report['release'];
+        $status = ! Release_Updater::canonical_install() ? 'Updates unavailable: expected mediaflow/mediaflow.php'
+            : ( $report['error'] ? 'GitHub check failed'
+                : ( ! $release ? 'No eligible release published'
+                    : ( version_compare( $release['version'], QMEDIAFLOW_VERSION, '>' ) ? 'Update available' : 'No newer release' ) ) );
+        ?>
+        <section class="qmf-card qmf-panel" id="qmf-releases">
+            <h2>GitHub Releases</h2>
+            <p class="qmf-muted">Official source: indigiti/qmediaflow · WordPress-native updates</p>
+            <dl class="qmf-status">
+                <?php foreach ( array(
+                    'Installed plugin' => QMEDIAFLOW_VERSION,
+                    'Release channel' => ucfirst( $channel ),
+                    'Latest eligible release' => $release ? $release['version'] : '—',
+                    'Update status' => $status,
+                    'Last GitHub API check' => gmdate( 'Y-m-d H:i', $report['checked'] ) . ' UTC',
+                ) as $label => $value ) : ?>
+                    <div><dt><?php echo esc_html( $label ); ?></dt><dd><?php echo esc_html( $value ); ?></dd></div>
+                <?php endforeach; ?>
+            </dl>
+            <?php if ( $release ) : ?><p><a href="<?php echo esc_url( $release['url'] ); ?>">View GitHub release notes</a></p><?php endif; ?>
+        </section>
+        <section class="qmf-card qmf-panel">
+            <h2>Release channel</h2>
+            <p class="qmf-muted">Stable is recommended for production. Testing includes prereleases and does not downgrade the installed version.</p>
+            <?php if ( $locked ) : ?><p>Controlled by <code>QMEDIAFLOW_UPDATE_CHANNEL</code> in wp-config.php.</p><?php endif; ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="qmediaflow_release_controls">
+                <?php wp_nonce_field( 'qmediaflow_release_controls' ); ?>
+                <fieldset <?php disabled( $locked ); ?>>
+                    <legend class="screen-reader-text">Choose a release channel</legend>
+                    <label class="qmf-release-choice"><input type="radio" name="channel" value="stable" <?php checked( $channel, 'stable' ); ?>> <strong>Stable</strong> — final releases only</label>
+                    <label class="qmf-release-choice"><input type="radio" name="channel" value="testing" <?php checked( $channel, 'testing' ); ?>> <strong>Testing</strong> — includes prereleases; use on staging</label>
+                    <button class="button button-primary" type="submit" name="operation" value="save">Save release channel</button>
+                </fieldset>
+            </form>
+        </section>
+        <section class="qmf-card qmf-panel">
+            <h2>Update and installation controls</h2>
+            <p>WordPress manages installation and per-plugin auto-updates. GitHub updates verify the SHA-256 checksum before installation.</p>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="qmediaflow_release_controls">
+                <?php wp_nonce_field( 'qmediaflow_release_controls' ); ?>
+                <button class="button" type="submit" name="operation" value="check">Check GitHub releases now</button>
+                <a class="button" href="<?php echo esc_url( self_admin_url( 'plugins.php' ) ); ?>">Open WordPress Plugins</a>
+            </form>
+        </section>
+        <?php
+    }
+
+    public function release_controls(): void {
+        if ( ! Release_Updater::can_manage() ) { wp_die( 'Insufficient permissions.', '', array( 'response' => 403 ) ); }
+        check_admin_referer( 'qmediaflow_release_controls' );
+        $operation = $_POST['operation'] ?? '';
+        if ( 'save' === $operation ) {
+            $channel = $_POST['channel'] ?? '';
+            if ( defined( 'QMEDIAFLOW_UPDATE_CHANNEL' ) || ! in_array( $channel, array( 'stable', 'testing' ), true ) ) {
+                wp_die( 'The release channel cannot be changed.' );
+            }
+            update_site_option( 'qmediaflow_update_channel', $channel );
+        } elseif ( 'check' === $operation ) {
+            Release_Updater::report( true );
+        } else {
+            wp_die( 'Unknown release action.' );
+        }
+        delete_site_transient( 'update_plugins' );
+        wp_safe_redirect( admin_url( 'tools.php?page=mediaflow#qmf-releases' ) );
+        exit;
     }
 
     public function lqip_rebuild_ajax(): void {
