@@ -92,6 +92,7 @@ final class Plugin {
         add_action( 'added_post_meta', array( $this, 'invalidate_manifest' ), 10, 4 );
         add_action( 'updated_post_meta', array( $this, 'invalidate_manifest' ), 10, 4 );
         add_action( 'deleted_post_meta', array( $this, 'invalidate_manifest' ), 10, 4 );
+        add_action( 'post_updated', array( $this, 'revoke_on_post_update' ), 10, 3 );
         add_action( 'delete_attachment', array( $this, 'delete_attachment_cache' ), 5 );
 
         add_filter( 'image_downsize', fn( $downsize, $id, $size ) => $this->resolver->filter_image_downsize( $downsize, $id, $size ), 5, 3 );
@@ -199,6 +200,10 @@ final class Plugin {
     }
 
     public function invalidate_manifest( $meta_id, int $id, string $key, $value ): void {
+        if ( '_qmediaflow_visibility' === $key ) {
+            if ( ! Manifest_Store::public_media_allowed( $id ) ) { $this->revoke_public_media( $id ); }
+            return;
+        }
         if ( '_wp_attachment_metadata' === $key && is_array( $value ) && 'deleted_post_meta' !== current_filter() ) {
             $this->manifests->build( $id, $value, false );
         } elseif ( in_array( $key, array( '_wp_attached_file', '_wp_attachment_metadata' ), true ) ) {
@@ -210,6 +215,37 @@ final class Plugin {
         $this->paths->ensure();
         $this->manifests->build( $attachment_id, $metadata, true );
         return $metadata;
+    }
+
+    public function revoke_on_post_update( int $id, \WP_Post $after, \WP_Post $before ): void {
+        if ( 'attachment' === $after->post_type ) {
+            if ( ! Manifest_Store::public_media_allowed( $id ) ) { $this->revoke_public_media( $id ); }
+            return;
+        }
+        if ( Manifest_Store::is_public_parent( $after ) || ! Manifest_Store::is_public_parent( $before ) ) { return; }
+
+        // Keyset batches keep memory bounded and avoid skipping attachments
+        // when a concurrent operation changes the child set.
+        global $wpdb;
+        $cursor = 0;
+        do {
+            $ids = $wpdb->get_col( $wpdb->prepare(
+                "SELECT ID FROM {$wpdb->posts} WHERE post_parent = %d AND post_type = 'attachment' AND ID > %d ORDER BY ID LIMIT 100",
+                $id,
+                $cursor
+            ) );
+            foreach ( (array) $ids as $child ) {
+                $cursor = (int) $child;
+                $this->revoke_public_media( $cursor );
+            }
+        } while ( count( (array) $ids ) === 100 );
+    }
+
+    public function revoke_public_media( int $id ): void {
+        $this->delete_attachment_cache( $id );
+        // Edge/browser caches are outside the origin. Integrations must
+        // explicitly invalidate cached derivatives and any cached HTML.
+        do_action( 'qmediaflow_public_media_revoked', $id, $this->paths->attachment_root_url( $id ), $this->paths->site_id() );
     }
 
     public function delete_attachment_cache( int $attachment_id ): void {
