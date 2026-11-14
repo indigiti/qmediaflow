@@ -13,6 +13,7 @@ final class Admin {
     public function hooks(): void {
         add_action( 'admin_post_mediaflow_check_encoding', static fn() => Plugin::instance()->admin()->check_encoding() );
         add_action( 'add_meta_boxes_post', array( $this, 'add_editor_checks' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'dashboard_assets' ) );
         add_action( 'admin_menu', static fn() => Plugin::instance()->admin()->menu() );
         add_action( 'admin_post_mediaflow_save_settings', static fn() => Plugin::instance()->admin()->save_settings() );
         add_action( 'admin_post_mediaflow_rotate_cache', static fn() => Plugin::instance()->admin()->rotate_cache() );
@@ -45,12 +46,17 @@ final class Admin {
 
     public function menu(): void {
         add_management_page(
-            'MediaFlow',
-            'MediaFlow',
+            'QMediaFlow',
+            'QMediaFlow',
             'manage_options',
             'mediaflow',
             static fn() => Plugin::instance()->admin()->render()
         );
+    }
+
+    public function dashboard_assets( string $hook ): void {
+        if ( 'tools_page_mediaflow' !== $hook ) { return; }
+        wp_enqueue_style( 'qmediaflow-dashboard', QMEDIAFLOW_URL . 'assets/css/admin-dashboard.css', array( 'dashicons' ), QMEDIAFLOW_VERSION );
     }
 
     public function render(): void {
@@ -64,15 +70,80 @@ final class Admin {
         $avif             = wp_image_editor_supports( array( 'mime_type' => 'image/avif' ) );
         $cache_writable   = is_writable( $this->paths->cache_dir() );
         $private_writable = is_writable( $this->paths->private_dir() );
+        $signing_ready = '' !== $this->settings->signing_key();
+        $channel = defined( 'QMEDIAFLOW_UPDATE_CHANNEL' ) && 'testing' === QMEDIAFLOW_UPDATE_CHANNEL ? 'Testing' : 'Stable';
+        $navigation = array(
+            'overview' => array( 'dashboard', 'Overview' ),
+            'runtime' => array( 'performance', 'Runtime & delivery' ),
+            'verification' => array( 'shield', 'Deployment checks' ),
+            'settings' => array( 'admin-settings', 'Media settings' ),
+            'previews' => array( 'format-image', 'Preview tools' ),
+            'encoders' => array( 'admin-tools', 'Encoder check' ),
+            'cache' => array( 'database', 'Cache maintenance' ),
+        );
         ?>
-        <div class="wrap">
-            <h1>MediaFlow</h1>
-            <p><strong>Adaptive WordPress image delivery:</strong> originals stay in uploads; generated variants live only in <code>wp-content/image-cache/</code>.</p>
+        <div class="wrap qmf-dashboard">
+            <aside class="qmf-sidebar">
+                <div class="qmf-brand"><span class="qmf-mark" aria-hidden="true">Q</span><div><strong>QMediaFlow</strong><small>Media operations</small></div></div>
+                <nav aria-label="QMediaFlow workspace">
+                    <p class="qmf-kicker">Workspace</p>
+                    <?php foreach ( $navigation as $anchor => $item ) : ?>
+                        <a href="#qmf-<?php echo esc_attr( $anchor ); ?>"><span class="dashicons dashicons-<?php echo esc_attr( $item[0] ); ?>" aria-hidden="true"></span><?php echo esc_html( $item[1] ); ?></a>
+                    <?php endforeach; ?>
+                </nav>
+                <div class="qmf-sidebar-footer">Version <?php echo esc_html( QMEDIAFLOW_VERSION ); ?><br><?php echo esc_html( $channel ); ?> update channel</div>
+            </aside>
+            <div class="qmf-main">
+                <header class="qmf-topbar">
+                    <span><strong>QMediaFlow</strong><span class="qmf-divider">/</span>Workspace</span>
+                    <div class="qmf-top-actions">
+                        <span class="qmf-site"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></span>
+                        <a class="qmf-action" href="https://github.com/indigiti/qmediaflow/releases">GitHub updates</a>
+                        <a class="qmf-action" href="#qmf-settings">Settings</a>
+                    </div>
+                </header>
+                <div class="qmf-content" id="qmf-overview">
+                    <p class="qmf-kicker qmf-accent">Media operations</p>
+                    <h1>Overview</h1>
+                    <p class="qmf-intro">Manage image delivery, upload policy, and cache health from one workspace.</p>
+                    <div class="qmf-summary">
+                        <div class="qmf-card"><span>Public cache</span><strong><?php echo $cache_writable ? 'Writable' : 'Check access'; ?></strong><small>Origin cache storage</small></div>
+                        <div class="qmf-card"><span>Private runtime</span><strong><?php echo $private_writable ? 'Writable' : 'Check access'; ?></strong><small>HTTP isolation not verified</small></div>
+                        <div class="qmf-card qmf-highlight"><span>Newsroom policy</span><strong><?php echo $this->settings->newsroom_enabled() ? 'Enabled' : 'Disabled'; ?></strong><small><?php echo esc_html( number_format_i18n( $this->settings->newsroom_max_bytes() ) ); ?> byte limit when enabled</small></div>
+                        <div class="qmf-card"><span>Update channel</span><strong><?php echo esc_html( $channel ); ?></strong><small>WordPress controls auto-install</small></div>
+                    </div>
+                    <div class="qmf-grid">
+                        <section class="qmf-card" aria-labelledby="qmf-systems-title">
+                            <h2 id="qmf-systems-title">Systems at a glance</h2>
+                            <p class="qmf-muted">Live configuration and capability checks.</p>
+                            <dl class="qmf-status">
+                                <?php foreach ( array(
+                                    array( 'Signing storage', $signing_ready ? 'Ready' : 'Unavailable', $signing_ready ),
+                                    array( 'WebP encoder', $webp ? 'Supported' : 'Unavailable', $webp ),
+                                    array( 'AVIF encoder', $avif ? 'Supported' : 'Unavailable', $avif ),
+                                    array( 'Warm hits bypass PHP', 'Not verified', false ),
+                                ) as $signal ) : ?>
+                                    <div><dt><?php echo esc_html( $signal[0] ); ?></dt><dd class="<?php echo $signal[2] ? 'is-ready' : 'is-unverified'; ?>"><?php echo esc_html( $signal[1] ); ?></dd></div>
+                                <?php endforeach; ?>
+                            </dl>
+                        </section>
+                        <section class="qmf-card" aria-labelledby="qmf-actions-title">
+                            <h2 id="qmf-actions-title">Quick actions</h2>
+                            <p class="qmf-muted">Open the tools you need without scrolling through every setting.</p>
+                            <div class="qmf-quick">
+                                <a href="#qmf-settings">Review upload policy<span aria-hidden="true">↗</span></a>
+                                <a href="#qmf-verification">Review deployment checks<span aria-hidden="true">↗</span></a>
+                                <a href="#qmf-previews">Manage low-quality previews<span aria-hidden="true">↗</span></a>
+                                <a href="#qmf-cache">Review cache maintenance<span aria-hidden="true">↗</span></a>
+                            </div>
+                        </section>
+                    </div>
 
             <?php if ( isset( $_GET['mediaflow_notice'] ) ) : ?>
                 <div class="notice notice-success is-dismissible"><p><?php echo esc_html( sanitize_text_field( wp_unslash( $_GET['mediaflow_notice'] ) ) ); ?></p></div>
             <?php endif; ?>
 
+                    <section class="qmf-card qmf-panel" id="qmf-runtime">
             <h2>Runtime status</h2>
             <table class="widefat striped" style="max-width:900px">
                 <tbody>
@@ -81,7 +152,7 @@ final class Admin {
                     <tr><td>Private runtime directory</td><td><code><?php echo esc_html( $this->paths->private_dir() ); ?></code></td></tr>
                     <tr><td>Cache writable</td><td><?php echo $cache_writable ? 'Yes' : 'No'; ?></td></tr>
                     <tr><td>Private runtime writable</td><td><?php echo $private_writable ? 'Yes' : 'No'; ?></td></tr>
-                    <tr><td>Signing storage</td><td><?php echo '' !== $this->settings->signing_key() ? 'Ready' : 'Unavailable — image rewriting disabled'; ?></td></tr>
+                    <tr><td>Signing storage</td><td><?php echo $signing_ready ? 'Ready' : 'Unavailable — image rewriting disabled'; ?></td></tr>
                     <tr><td>Processing limits</td><td><?php echo esc_html( (string) MEDIAFLOW_MAX_GENERATORS ); ?> concurrent encoders; <?php echo esc_html( (string) MEDIAFLOW_MAX_SOURCE_PIXELS ); ?> source pixels; <?php echo esc_html( (string) MEDIAFLOW_MAX_OUTPUT_PIXELS ); ?> output pixels</td></tr>
                     <tr><td>Current cache namespace</td><td><code><?php echo esc_html( $this->settings->cache_namespace() ); ?></code></td></tr>
                     <tr><td>WebP output</td><td><?php echo $webp ? 'Supported' : 'Unavailable'; ?></td></tr>
@@ -93,9 +164,13 @@ final class Admin {
                 </tbody>
             </table>
 
+                    </section>
+                    <section class="qmf-card qmf-panel" id="qmf-verification">
             <h2>Deployment verification</h2>
             <p>Private and legacy HTTP paths: <strong>Not verified</strong>. Verify origin and CDN separately; filesystem writability is not an access check.</p>
             <p>Warm cache headers: <strong>Not verified</strong>. Check a generated derivative for public immutable caching and a fallback for no-store.</p>
+                    </section>
+                    <section class="qmf-card qmf-panel" id="qmf-settings">
             <h2>Settings</h2>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="max-width:900px">
                 <input type="hidden" name="action" value="mediaflow_save_settings">
@@ -222,6 +297,8 @@ final class Admin {
                 <?php submit_button( 'Save MediaFlow Settings' ); ?>
             </form>
 
+                    </section>
+                    <section class="qmf-card qmf-panel" id="qmf-previews">
             <h2>LQIP pre-warm <span style="font-weight:400">(optional)</span></h2>
             <p><strong>Auto LQIP does not require a full rebuild.</strong> Existing images learn on first use: a deterministic gradient is shown immediately, one queue marker is created, and the WP-Cron worker generates the LQIP in bounded background runs. Use pre-warm only when you want existing Media Library images ready before visitors request them.</p>
             <p><button type="button" class="button button-secondary" id="mediaflow-lqip-rebuild">Pre-warm / Refresh Existing LQIPs</button></p>
@@ -262,12 +339,16 @@ final class Admin {
             })();
             </script>
 
+                    </section>
+                    <section class="qmf-card qmf-panel" id="qmf-encoders">
             <h2>Encoder compatibility check</h2>
             <p>Creates tiny JPEG/PNG test files and checks their encoding headers. Run after a server or image-library update. VERIFIED confirms the selected encoder produced the requested mode.</p>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                 <input type="hidden" name="action" value="mediaflow_check_encoding">
                 <?php wp_nonce_field( 'mediaflow_check_encoding' ); submit_button( 'Check JPEG / PNG encoders', 'secondary' ); ?>
             </form>
+                    </section>
+                    <section class="qmf-card qmf-panel" id="qmf-cache">
             <h2>Logical cache purge</h2>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                 <input type="hidden" name="action" value="mediaflow_rotate_cache">
@@ -275,6 +356,10 @@ final class Admin {
                 <?php submit_button( 'Rotate Cache Namespace', 'secondary' ); ?>
                 <p class="description">O(1) purge: new HTML immediately uses a fresh cache namespace. Existing immutable files stay valid for already-cached pages and can be removed later by maintenance tooling; wp-admin never recursively deletes millions of files.</p>
             </form>
+                    </section>
+                    <p class="qmf-footer">QMediaFlow reports local configuration and capabilities. Traffic, cache hit rates, and CDN health are not measured here.</p>
+                </div>
+            </div>
         </div>
         <?php
     }
