@@ -30,7 +30,7 @@ final class Manifest_Store {
             return false;
         }
         if ( defined( 'QMEDIAFLOW_REQUIRE_PUBLIC_OPT_IN' ) && QMEDIAFLOW_REQUIRE_PUBLIC_OPT_IN && 'public' !== $policy ) { return false; }
-        return false !== apply_filters( 'qmediaflow_public_media_allowed', true, $attachment_id, $post );
+        return true === apply_filters( 'qmediaflow_public_media_allowed', true, $attachment_id, $post );
     }
 
     public static function is_public_parent( \WP_Post $post ): bool {
@@ -698,6 +698,7 @@ final class Manifest_Store {
         $extension = (string) ( $asset['extension'] ?? $this->lqip_extension() );
         $bytes     = (string) ( $asset['bytes'] ?? '' );
         if ( '' === $bytes ) { return false; }
+        if ( ! self::public_media_allowed( $attachment_id ) ) { return false; }
         return $this->write_atomic_binary( $this->paths->lqip_path( $attachment_id, $revision, $signature, $extension ), $bytes );
     }
 
