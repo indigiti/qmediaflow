@@ -8,6 +8,7 @@
  * Text Domain: qmediaflow
  * Requires at least: 6.5
  * Requires PHP: 8.1
+ * Update URI: https://github.com/indigiti/qmediaflow
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -83,6 +84,8 @@ require_once QMEDIAFLOW_DIR . 'includes/class-admin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-cli.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-plugin.php';
 require_once QMEDIAFLOW_DIR . 'includes/class-branding.php';
+require_once QMEDIAFLOW_DIR . 'includes/class-release-updater.php';
+\MediaFlow\Release_Updater::register();
 
 register_activation_hook( __FILE__, array( 'MediaFlow\\Plugin', 'activate' ) );
 
